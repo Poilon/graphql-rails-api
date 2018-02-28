@@ -8,7 +8,7 @@ module GraphqlRailsApi
     class_option('pg_uuid', type: :boolean, default: true)
 
     def generate_files
-      @app_name = File.basename(Rails.root.to_s)
+      @app_name = File.basename(Rails.root.to_s).underscore
       system('mkdir -p app/graphql/')
 
       write_service

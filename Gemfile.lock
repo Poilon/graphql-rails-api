@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    graphql-rails-api (0.1.1)
+    graphql-rails-api (0.1.2)
       graphql
       rails (~> 5.1.4)
 
