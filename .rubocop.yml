@@ -1,0 +1,123 @@
+AllCops:
+  Exclude:
+    - db/**/*
+    - bin/*
+    - vendor/**/*
+    - Gemfile.lock
+    - Rakefile
+  TargetRubyVersion: 2.4
+
+Layout/DotPosition:
+  EnforcedStyle: trailing
+
+Style/PercentLiteralDelimiters:
+  PreferredDelimiters:
+    "default": "()"
+    "%i": "[]"
+    "%w": "[]"
+
+Style/RescueStandardError:
+  Exclude:
+    - lib/tasks/*
+
+Layout/EmptyLinesAroundArguments:
+  Exclude:
+    - lib/tasks/*
+
+Style/FormatStringToken:
+  Exclude:
+    - lib/tasks/*
+
+Metrics/AbcSize:
+  Max: 40
+
+Metrics/LineLength:
+  Max: 100
+  Exclude:
+    - "lib/tasks/*"
+
+Metrics/PerceivedComplexity:
+  Max: 100
+  Exclude:
+    - "app/services/hubspot/service.rb"
+
+Metrics/ParameterLists:
+  Max: 6
+
+Metrics/ClassLength:
+  Max: 300
+
+Metrics/CyclomaticComplexity:
+  Max: 12
+
+Metrics/ModuleLength:
+  Exclude:
+    - "**/*_spec.rb"
+    - "spec/support/*"
+
+Metrics/MethodLength:
+  Exclude:
+    - "app/serializers/**/**/**"
+    - "spec/support/factories.rb"
+
+Metrics/BlockLength:
+  Exclude:
+    - "**/*_spec.rb"
+    - "**/routes.rb"
+    - "**/**/*.rake"
+    - "app/graphql/**/*.rb"
+    - "app/admin/**"
+
+Layout/AlignParameters:
+  EnforcedStyle: with_fixed_indentation
+
+Style/FrozenStringLiteralComment:
+  Enabled: false
+
+Layout/ExtraSpacing:
+  # When true, allows most uses of extra spacing if the intent is to align
+  # things with the previous or next line, not counting empty lines or comment
+  # lines.
+  AllowForAlignment: true
+
+
+Documentation:
+  Enabled: false
+
+Style/StringLiterals:
+  EnforcedStyle: single_quotes
+
+Layout/EmptyLinesAroundClassBody:
+  EnforcedStyle: empty_lines
+  SupportedStyles:
+    - empty_lines
+    - no_empty_lines
+
+Layout/EmptyLinesAroundModuleBody:
+  EnforcedStyle: no_empty_lines
+  SupportedStyles:
+    - empty_lines
+    - no_empty_lines
+
+Layout/EmptyLinesAroundBlockBody:
+  Description: "Keeps track of empty lines around block bodies."
+  Enabled: false
+
+Layout/EmptyLines:
+  Description: "Don't use several empty lines in a row."
+  Enabled: true
+
+Layout/EndOfLine:
+  Description: 'Use Unix-style line endings.'
+  StyleGuide: 'https://github.com/bbatsov/ruby-style-guide#crlf'
+  Enabled: true
+
+# Indent one level for follow-up lines
+# https://github.com/troessner/reek/issues/553
+Layout/MultilineOperationIndentation:
+  EnforcedStyle: indented
+
+Style/WordArray:
+  Description: 'Use %w or %W for arrays of words.'
+  StyleGuide: 'https://github.com/bbatsov/ruby-style-guide#percent-w'
+  Enabled: false
