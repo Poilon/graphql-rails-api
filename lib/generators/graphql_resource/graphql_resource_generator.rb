@@ -167,7 +167,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   def add_has_many_fields_to_types
     @id_fields.each do |f|
       write_at(
-        "app/graphql/#{f.gsub('_id', '').pluralize}/type.rb", 5,
+        "app/graphql/#{f.gsub('_id', '').pluralize}/type.rb", 4,
         <<-STRING
   field :#{resource.singularize}_ids, !types[#{@id_type}]
   field :#{resource.pluralize}, !types[!#{resource.pluralize.camelize}::Type] do
