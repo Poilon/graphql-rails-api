@@ -2,7 +2,7 @@ require 'pry'
 
 class GraphqlResourceGenerator < Rails::Generators::NamedBase
 
-  %i[migration model mutations service graphql_input_type graphql_type propagation].each do |opt|
+  %i[migration model mutations service graphql_input_type graphql_type propagation migrate].each do |opt|
     class_option(opt, type: :boolean, default: true)
   end
 
@@ -43,8 +43,9 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     # Propagation
     add_has_many_to_models if options.propagation?
     add_has_many_fields_to_types if options.propagation?
+    handle_many_to_many_fields if options.propagation?
 
-    system('bundle exec rails db:migrate')
+    system('bundle exec rails db:migrate') if options.migrate?
   end
 
   private
@@ -239,6 +240,12 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
       add_has_many_fields_to_type(f.gsub('_id', ''), resource)
       add_belongs_to_field_to_type(f.gsub('_id', ''), resource)
     end
+  end
+
+  def handle_many_to_many_fields
+    @many_to_many.each do |field|
+    end
+
   end
 
   def generate_model_with_belongs_to(belongs_to)
