@@ -1,3 +1,5 @@
+require 'pry'
+
 class GraphqlResourceGenerator < Rails::Generators::NamedBase
 
   %i[migration model mutations service graphql_input_type graphql_type propagation].each do |opt|
@@ -5,22 +7,20 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   end
 
   TYPES_MAPPING = {
-    'types.Uuid' => '!types.String',
-    'types.Text' => 'types.String',
-    'types.Datetime' => 'types.String',
-    'types.Integer' => 'types.Int',
-    'types.Json' => 'types.String',
-    'types.Id' => '!types.ID',
-    'types.String' => 'types.String',
-    'types.Float' => 'types.Float'
+    'id' => '!types.ID',
+    'uuid' => '!types.String',
+    'text' => 'types.String',
+    'datetime' => 'types.String',
+    'integer' => 'types.Int',
+    'json' => 'types.String',
+    'jsonb' => 'types.String',
+    'string' => 'types.String',
+    'float' => 'types.Float'
   }.freeze
 
   def create_graphql_files
-    @graphql_resource_directory = "app/graphql/#{resource.pluralize}"
-    @mutations_directory = "#{@graphql_resource_directory}/mutations"
-    @args = args
-    @id_type = Graphql::Rails::Api::Config.instance.id_type == :uuid ? '!types.String' : '!types.ID'
-    @id_fields = @args&.map { |f| f.split(':').first }.to_a.select { |f| f.ends_with?('_id') }
+    return if args.blank?
+    parse_args
 
     # Generate migration
     generate_migration if options.migration?
@@ -43,14 +43,46 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     # Propagation
     add_has_many_to_models if options.propagation?
     add_has_many_fields_to_types if options.propagation?
+
+    system('bundle exec rails db:migrate')
   end
 
   private
 
-  def generate_migration
-    fields_to_migration = args&.map do |f|
-      "t.#{f.split(':').reverse.join(' :')}"
+  def parse_args
+    @graphql_resource_directory = "app/graphql/#{resource.pluralize}"
+    @mutations_directory = "#{@graphql_resource_directory}/mutations"
+
+    if Graphql::Rails::Api::Config.instance.id_type == :uuid
+      @id_db_type = 'uuid'
+      @id_type = '!types.String'
+    else
+      @id_db_type = 'integer'
+      @id_type = '!types.ID'
+    end
+
+    @has_many = []
+    @many_to_many = []
+
+    @args = args.each_with_object({}) do |f, hash|
+      next if f.split(':').count != 2
+      case f.split(':').first
+      when 'belongs_to' then hash["#{f.split(':').last.singularize}_id"] = "#{@id_db_type}"
+      when 'has_many' then @has_many << f.split(':').last.pluralize
+      when 'many_to_many' then @many_to_many << f.split(':').last.pluralize
+      else
+        hash[f.split(':').first] = f.split(':').last
+      end
+    end
+
+    @id_fields = @args.select { |k, v| k.end_with?('_id') }
+
+    @fields_to_migration = @args.map do |f|
+      "t.#{f.reverse.join(' :')}"
     end.join("\n      ")
+  end
+
+  def generate_migration
     system("bundle exec rails generate migration create_#{resource} --skip")
     migration_file = Dir.glob("db/migrate/*create_#{resource}*").last
     File.write(
@@ -59,7 +91,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
         class Create#{resource.camelize} < ActiveRecord::Migration[5.1]
           def change
             create_table :#{resource.pluralize}, #{'id: :uuid ' if Graphql::Rails::Api::Config.instance.id_type == :uuid}do |t|
-              #{fields_to_migration}
+              #{@fields_to_migration}
               t.timestamps
             end
           end
@@ -164,17 +196,48 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     end
   end
 
-  def add_has_many_fields_to_types
-    @id_fields.each do |f|
+  def add_has_many_fields_to_type(field, res)
+      file_name = "app/graphql/#{field.pluralize}/type.rb"
+      if File.read(file_name).include?("field :#{res.singularize}_ids") ||
+          File.read(file_name).include?("field :#{res.pluralize}")
+        return
+      end
       write_at(
-        "app/graphql/#{f.gsub('_id', '').pluralize}/type.rb", 4,
+        file_name, 4,
         <<-STRING
-  field :#{resource.singularize}_ids, !types[#{@id_type}]
-  field :#{resource.pluralize}, !types[!#{resource.pluralize.camelize}::Type] do
-    resolve ->(obj, _, ctx) { obj.#{resource.pluralize}.visible_for(user: ctx[:current_user]) }
+  field :#{res.singularize}_ids, !types[#{@id_type}] do
+    resolve ->(obj, _, ctx) { obj.#{res.pluralize}.visible_for(user: ctx[:current_user]).pluck(:id) }
+  end
+  field :#{res.pluralize}, !types[!#{res.pluralize.camelize}::Type] do
+    resolve ->(obj, _, ctx) { obj.#{res.pluralize}.visible_for(user: ctx[:current_user]) }
   end
         STRING
       )
+  end
+
+  def add_belongs_to_field_to_type(field, res)
+    file_name = "app/graphql/#{res.pluralize}/type.rb"
+    if File.read(file_name).include?("field :#{field.singularize}_id") ||
+        File.read(file_name).include?("field :#{field.singularize}")
+      return
+    end
+    write_at(
+      file_name, 4,
+      <<-STRING
+  field :#{field.singularize}_id, !types[#{@id_type}]
+  field :#{field.singularize}, !#{field.pluralize.camelize}::Type
+      STRING
+    )
+  end
+  
+  def add_has_many_fields_to_types
+    @has_many.each do |f|
+      add_has_many_fields_to_type(resource, f)
+      add_belongs_to_field_to_type(resource, f)
+    end
+    @id_fields.each do |f, _|
+      add_has_many_fields_to_type(f.gsub('_id', ''), resource)
+      add_belongs_to_field_to_type(f.gsub('_id', ''), resource)
     end
   end
 
@@ -214,28 +277,58 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     )
   end
 
+  def generate_has_many_migration(f)
+    system("bundle exec rails generate migration add_#{resource.singularize}_id_to_#{f} --skip")
+    migration_file = Dir.glob("db/migrate/*add_#{resource.singularize}_id_to_#{f}*").last
+    File.write(
+      migration_file,
+      <<~STRING
+        class Add#{resource.singularize.camelize}IdTo#{f.camelize} < ActiveRecord::Migration[5.1]
+          def change
+            add_column :#{f.pluralize}, :#{resource.singularize}_id, :#{@id_db_type}
+          end
+        end
+      STRING
+    )
+  end
+
   def add_has_many_to_models
-    @id_fields.each do |f|
+    @has_many.each do |f|
+      next unless File.exist?("app/models/#{resource.singularize}.rb")
+      next unless File.exist?("app/models/#{f.singularize}.rb")
+      unless File.read("app/models/#{resource.singularize}.rb").include?("has_many :#{f.pluralize}")
+        write_at("app/models/#{resource.singularize}.rb", 3, "  has_many :#{f.pluralize}\n")
+      end
+      unless File.read("app/models/#{f.singularize}.rb").include?("belongs_to :#{resource.singularize}")
+        write_at("app/models/#{f.singularize}.rb", 3, "  belongs_to :#{resource.singularize}\n")
+      end
+      if !f.singularize.camelize.constantize.new.respond_to?("#{resource.singularize}_id")
+        generate_has_many_migration(f)
+      end
+    end
+    @id_fields.each do |k, v|
+      next unless File.exist?("app/models/#{k.gsub('_id', '').singularize}.rb")
+      next if File.read("app/models/#{k.gsub('_id', '').singularize}.rb").include?("has_many :#{resource.pluralize}")
       write_at(
-        "app/models/#{f.gsub('_id', '').singularize}.rb", 3, "  has_many :#{resource.pluralize}\n"
+        "app/models/#{k.gsub('_id', '').singularize}.rb", 3, "  has_many :#{resource.pluralize}\n"
       )
     end
   end
 
   def generate_belongs_to
-    @id_fields.map do |f|
-      "belongs_to :#{f.gsub('_id', '')}"
+    @id_fields.map do |k, _|
+      "belongs_to :#{k.gsub('_id', '')}"
     end.join("\n  ") + "\n"
   end
 
   def map_types(input_type: false)
-    result = args&.map do |f|
-      field_name = f.split(':').first
-      field_type = TYPES_MAPPING[f.split(':').last.capitalize.prepend('types.')]
+    result = args&.map do |k, v|
+      field_name = k
+      field_type = TYPES_MAPPING[v]
       res = "#{input_type ? 'argument' : 'field'} :#{field_name}, #{field_type}"
       if !input_type && field_name.ends_with?('_id')
         res += "\n  field :#{field_name.gsub('_id', '')}, " \
-          "!#{field_name.pluralize.gsub('_id', '').camelize}::Type"
+          "!#{field_name.gsub('_id', '').pluralize.camelize}::Type"
       end
       res
     end&.join("\n  ")
