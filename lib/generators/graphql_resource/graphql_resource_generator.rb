@@ -244,9 +244,10 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
 
   def handle_many_to_many_fields
     @many_to_many.each do |field|
-    end
 
+    end
   end
+
 
   def generate_model_with_belongs_to(belongs_to)
     File.write(
