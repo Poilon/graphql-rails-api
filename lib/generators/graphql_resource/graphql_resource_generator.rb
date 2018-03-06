@@ -14,8 +14,6 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     'integer' => 'types.Int',
     'json' => 'types.String',
     'jsonb' => 'types.String',
-    'string' => 'types.String',
-    'float' => 'types.Float'
   }.freeze
 
   def create_graphql_files
@@ -49,6 +47,10 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   end
 
   private
+
+  def types_mapping(type)
+     TYPES_MAPPING[type] || "types.#{type.capitalize}"
+  end
 
   def parse_args
     @graphql_resource_directory = "app/graphql/#{resource.pluralize}"
@@ -214,6 +216,20 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   end
         STRING
       )
+
+    input_type_file_name = "app/graphql/#{field.pluralize}/mutations/input_type.rb"
+    if File.read(input_type_file_name).include?("argument :#{res.singularize}_id") ||
+    File.read(input_type_file_name).include?("argument :#{res.singularize}")
+      return
+    end
+    write_at(
+      input_type_file_name, 4,
+      <<-STRING
+  argument :#{res.singularize}_ids, !types[#{@id_type}]
+      STRING
+    )
+
+
   end
 
   def add_belongs_to_field_to_type(field, res)
@@ -225,8 +241,19 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     write_at(
       file_name, 4,
       <<-STRING
-  field :#{field.singularize}_id, !types[#{@id_type}]
+  field :#{field.singularize}_id, #{@id_type}
   field :#{field.singularize}, !#{field.pluralize.camelize}::Type
+      STRING
+    )
+    input_type_file_name = "app/graphql/#{res.pluralize}/mutations/input_type.rb"
+    if File.read(input_type_file_name).include?("argument :#{field.singularize}_id") ||
+    File.read(input_type_file_name).include?("argument :#{field.singularize}")
+      return
+    end
+    write_at(
+      input_type_file_name, 4,
+      <<-STRING
+  argument :#{field.singularize}_id, #{@id_type}
       STRING
     )
   end
@@ -332,7 +359,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   def map_types(input_type: false)
     result = args&.map do |k, v|
       field_name = k
-      field_type = TYPES_MAPPING[v]
+      field_type = types_mapping(v)
       res = "#{input_type ? 'argument' : 'field'} :#{field_name}, #{field_type}"
       if !input_type && field_name.ends_with?('_id')
         res += "\n  field :#{field_name.gsub('_id', '')}, " \
