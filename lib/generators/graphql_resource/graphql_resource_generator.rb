@@ -21,27 +21,24 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     parse_args
 
     # Generate migration
-    generate_migration if options.migration?
+    generate_create_migration(@resource, @fields_to_migration) if options.migration?
 
     # Graphql Basic mutations
-    generate_basic_mutations if options.mutations?
+    generate_basic_mutations(@resource) if options.mutations?
 
     # Graphql Type
-    generate_graphql_type if options.graphql_type?
+    generate_graphql_type(@resource) if options.graphql_type?
 
     # Model
-    generate_model if options.model?
-
-    # Graphql Input Type
-    generate_graphql_input_type if options.graphql_input_type?
+    generate_model(@resource) if options.model?
 
     # Service
-    generate_service if options.service?
+    generate_service(@resource) if options.service?
+    handle_many_to_many_fields(@resource) if options.propagation?
 
     # Propagation
-    add_has_many_to_models if options.propagation?
-    add_has_many_fields_to_types if options.propagation?
-    handle_many_to_many_fields if options.propagation?
+    add_has_many_to_models(@resource) if options.propagation?
+    add_has_many_fields_to_types(@resource) if options.propagation?
 
     system('bundle exec rails db:migrate') if options.migrate?
   end
@@ -53,9 +50,6 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   end
 
   def parse_args
-    @graphql_resource_directory = "app/graphql/#{resource.pluralize}"
-    @mutations_directory = "#{@graphql_resource_directory}/mutations"
-
     if Graphql::Rails::Api::Config.instance.id_type == :uuid
       @id_db_type = 'uuid'
       @id_type = '!types.String'
@@ -64,8 +58,10 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
       @id_type = '!types.ID'
     end
 
+    @resource = file_name.singularize
     @has_many = []
     @many_to_many = []
+    @mutations_directory = "#{graphql_resource_directory(@resource)}/mutations"
 
     @args = args.each_with_object({}) do |f, hash|
       next if f.split(':').count != 2
@@ -85,7 +81,11 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     end.join("\n      ")
   end
 
-  def generate_migration
+  def graphql_resource_directory(resource)
+    "app/graphql/#{resource.pluralize}"
+  end
+
+  def generate_create_migration(resource, fields)
     system("bundle exec rails generate migration create_#{resource} --skip")
     migration_file = Dir.glob("db/migrate/*create_#{resource}*").last
     File.write(
@@ -94,7 +94,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
         class Create#{resource.camelize} < ActiveRecord::Migration[5.1]
           def change
             create_table :#{resource.pluralize}, #{'id: :uuid ' if Graphql::Rails::Api::Config.instance.id_type == :uuid}do |t|
-              #{@fields_to_migration}
+              #{fields}
               t.timestamps
             end
           end
@@ -103,137 +103,88 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     )
   end
 
-  def generate_basic_mutations
+  def generate_basic_mutations(resource)
     system("mkdir -p #{@mutations_directory}")
-    generate_create_mutation
-    generate_update_mutation
-    generate_destroy_mutation
+    puts 'generating migrations...'
+    system("rails generate graphql_mutations #{resource}")
+    puts 'done'
+
+    # Graphql Input Type
+    puts 'generating input_type'
+    generate_graphql_input_type(resource) if options.graphql_input_type?
+    puts 'done'
   end
 
-  def generate_create_mutation
-    File.write(
-      "#{@mutations_directory}/create.rb",
-      <<~STRING
-        #{resource_class}::Mutations::Create = GraphQL::Field.define do
-          description 'Creates a #{resource_class.singularize}'
-          type #{resource_class}::Type
-
-          argument :#{resource}, #{resource_class}::Mutations::InputType
-
-          resolve ApplicationService.call(:#{resource}, :create)
-        end
-      STRING
-    )
-  end
-
-  def generate_update_mutation
-    File.write(
-      "#{@mutations_directory}/update.rb",
-      <<~STRING
-        #{resource_class}::Mutations::Update = GraphQL::Field.define do
-          description 'Updates a #{resource_class.singularize}'
-          type #{resource_class}::Type
-
-          argument :id, #{@id_type}
-          argument :#{resource}, #{resource_class}::Mutations::InputType
-
-          resolve ApplicationService.call(:#{resource}, :update)
-        end
-      STRING
-    )
-  end
-
-  def generate_destroy_mutation
-    File.write(
-      "#{@mutations_directory}/destroy.rb",
-      <<~STRING
-        #{resource_class}::Mutations::Destroy = GraphQL::Field.define do
-          description 'Destroys a #{resource_class.singularize}'
-          type #{resource_class}::Type
-
-          argument :id, #{@id_type}
-
-          resolve ApplicationService.call(:#{resource}, :destroy)
-        end
-      STRING
-    )
-  end
-
-  def generate_graphql_input_type
+  def generate_graphql_input_type(resource)
     system("mkdir -p #{@mutations_directory}")
     File.write(
       "#{@mutations_directory}/input_type.rb",
       <<~STRING
-        #{resource_class}::Mutations::InputType = GraphQL::InputObjectType.define do
-          name '#{resource_class.singularize}InputType'
-          description 'Properties for updating a #{resource_class.singularize}'
+        #{resource_class(resource)}::Mutations::InputType = GraphQL::InputObjectType.define do
+          name '#{resource_class(resource).singularize}InputType'
+          description 'Properties for updating a #{resource_class(resource).singularize}'
 
-          #{map_types(input_type: true)}
+          #{map_types(resource, input_type: true)}
 
         end
       STRING
     )
   end
 
-  def generate_graphql_type
+  def generate_graphql_type(resource)
     File.write(
-      "#{@graphql_resource_directory}/type.rb",
+      "#{graphql_resource_directory(resource)}/type.rb",
       <<~STRING
-        #{resource_class}::Type = GraphQL::ObjectType.define do
-          name '#{resource_class.singularize}'
+        #{resource_class(resource)}::Type = GraphQL::ObjectType.define do
+          name '#{resource_class(resource).singularize}'
           field :id, #{@id_type}
           field :created_at, types.String
           field :updated_at, types.String
-          #{map_types(input_type: false)}
+          #{map_types(resource, input_type: false)}
         end
       STRING
     )
   end
 
-  def generate_model
-    belongs_to = generate_belongs_to
-    if belongs_to.blank?
-      generate_empty_model
-    else
-      generate_model_with_belongs_to(belongs_to)
-    end
+  def generate_model(resource)
+    generate_empty_model(resource)
   end
 
-  def add_has_many_fields_to_type(field, res)
+  def add_has_many_fields_to_type(field, resource)
       file_name = "app/graphql/#{field.pluralize}/type.rb"
-      if File.read(file_name).include?("field :#{res.singularize}_ids") ||
-          File.read(file_name).include?("field :#{res.pluralize}")
+      if File.read(file_name).include?("field :#{resource.singularize}_ids") ||
+          File.read(file_name).include?("field :#{resource.pluralize}")
         return
       end
       write_at(
         file_name, 4,
         <<-STRING
-  field :#{res.singularize}_ids, !types[#{@id_type}] do
-    resolve ->(obj, _, ctx) { obj.#{res.pluralize}.visible_for(user: ctx[:current_user]).pluck(:id) }
+  field :#{resource.singularize}_ids, !types[#{@id_type}] do
+    resolve ->(obj, _, ctx) { obj.#{resource.pluralize}.visible_for(user: ctx[:current_user]).pluck(:id) }
   end
-  field :#{res.pluralize}, !types[!#{res.pluralize.camelize}::Type] do
-    resolve ->(obj, _, ctx) { obj.#{res.pluralize}.visible_for(user: ctx[:current_user]) }
+  field :#{resource.pluralize}, !types[!#{resource.pluralize.camelize}::Type] do
+    resolve ->(obj, _, ctx) { obj.#{resource.pluralize}.visible_for(user: ctx[:current_user]) }
   end
         STRING
       )
 
     input_type_file_name = "app/graphql/#{field.pluralize}/mutations/input_type.rb"
-    if File.read(input_type_file_name).include?("argument :#{res.singularize}_id") ||
-    File.read(input_type_file_name).include?("argument :#{res.singularize}")
+    if File.read(input_type_file_name).include?("argument :#{resource.singularize}_id") ||
+    File.read(input_type_file_name).include?("argument :#{resource.singularize}")
       return
     end
     write_at(
       input_type_file_name, 4,
       <<-STRING
-  argument :#{res.singularize}_ids, !types[#{@id_type}]
+  argument :#{resource.singularize}_ids, !types[#{@id_type}]
       STRING
     )
 
 
   end
 
-  def add_belongs_to_field_to_type(field, res)
-    file_name = "app/graphql/#{res.pluralize}/type.rb"
+  def add_belongs_to_field_to_type(field, resource)
+    file_name = "app/graphql/#{resource.pluralize}/type.rb"
     if File.read(file_name).include?("field :#{field.singularize}_id") ||
         File.read(file_name).include?("field :#{field.singularize}")
       return
@@ -245,7 +196,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   field :#{field.singularize}, !#{field.pluralize.camelize}::Type
       STRING
     )
-    input_type_file_name = "app/graphql/#{res.pluralize}/mutations/input_type.rb"
+    input_type_file_name = "app/graphql/#{resource.pluralize}/mutations/input_type.rb"
     if File.read(input_type_file_name).include?("argument :#{field.singularize}_id") ||
     File.read(input_type_file_name).include?("argument :#{field.singularize}")
       return
@@ -258,7 +209,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     )
   end
   
-  def add_has_many_fields_to_types
+  def add_has_many_fields_to_types(resource)
     @has_many.each do |f|
       add_has_many_fields_to_type(resource, f)
       add_belongs_to_field_to_type(resource, f)
@@ -269,37 +220,18 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     end
   end
 
-  def handle_many_to_many_fields
-    @many_to_many.each do |field|
-
-    end
-  end
-
-
-  def generate_model_with_belongs_to(belongs_to)
+  def generate_empty_model(resource)
     File.write(
       "app/models/#{resource}.rb",
       <<~STRING
-        class #{resource.camelize} < ApplicationRecord
-
-          #{belongs_to}
-        end
-      STRING
-    )
-  end
-
-  def generate_empty_model
-    File.write(
-      "app/models/#{resource}.rb",
-      <<~STRING
-        class #{resource.camelize} < ApplicationRecord
+        class #{resource.singularize.camelize} < ApplicationRecord
 
         end
       STRING
     )
   end
 
-  def generate_service
+  def generate_service(resource)
     File.write(
       "app/graphql/#{resource.pluralize}/service.rb",
       <<~STRING
@@ -312,51 +244,41 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     )
   end
 
-  def generate_has_many_migration(f)
-    system("bundle exec rails generate migration add_#{resource.singularize}_id_to_#{f} --skip")
-    migration_file = Dir.glob("db/migrate/*add_#{resource.singularize}_id_to_#{f}*").last
-    File.write(
-      migration_file,
-      <<~STRING
-        class Add#{resource.singularize.camelize}IdTo#{f.camelize} < ActiveRecord::Migration[5.1]
-          def change
-            add_column :#{f.pluralize}, :#{resource.singularize}_id, :#{@id_db_type}
-          end
-        end
-      STRING
-    )
+  def handle_many_to_many_fields(resource)
+    @many_to_many.each do |field|
+      generate_create_migration(
+        "#{resource}_#{field}",
+        <<-STRING
+t.#{@id_db_type} :#{resource.underscore.singularize}_id 
+      t.#{@id_db_type} :#{field.underscore.singularize}_id
+        STRING
+      )
+      generate_empty_model("#{resource}_#{field.singularize}")
+      add_to_model("#{resource}_#{field.singularize}", "belongs_to :#{resource.singularize}")
+      add_to_model("#{resource}_#{field.singularize}", "belongs_to :#{field.singularize}")
+      add_to_model(resource, "has_many :#{field.pluralize}, through: :#{resource}_#{field.pluralize}")
+      add_to_model(resource, "has_many :#{resource}_#{field.pluralize}")
+      add_to_model(field, "has_many :#{resource.pluralize}, through: :#{resource}_#{field.pluralize}")
+      add_to_model(field, "has_many :#{resource}_#{field.pluralize}")
+      add_has_many_fields_to_type(resource, field)
+      add_has_many_fields_to_type(field, resource)
+    end
   end
 
-  def add_has_many_to_models
-    @has_many.each do |f|
-      next unless File.exist?("app/models/#{resource.singularize}.rb")
-      next unless File.exist?("app/models/#{f.singularize}.rb")
-      unless File.read("app/models/#{resource.singularize}.rb").include?("has_many :#{f.pluralize}")
-        write_at("app/models/#{resource.singularize}.rb", 3, "  has_many :#{f.pluralize}\n")
-      end
-      unless File.read("app/models/#{f.singularize}.rb").include?("belongs_to :#{resource.singularize}")
-        write_at("app/models/#{f.singularize}.rb", 3, "  belongs_to :#{resource.singularize}\n")
-      end
-      if !f.singularize.camelize.constantize.new.respond_to?("#{resource.singularize}_id")
-        generate_has_many_migration(f)
-      end
+  def add_has_many_to_models(resource)
+    @has_many.each do |field|
+      generate_has_many_migration(resource, has_many: field)
+      add_to_model(resource, "has_many :#{field.pluralize}")
+      add_to_model(field, "belongs_to :#{resource.singularize}")
     end
     @id_fields.each do |k, v|
-      next unless File.exist?("app/models/#{k.gsub('_id', '').singularize}.rb")
-      next if File.read("app/models/#{k.gsub('_id', '').singularize}.rb").include?("has_many :#{resource.pluralize}")
-      write_at(
-        "app/models/#{k.gsub('_id', '').singularize}.rb", 3, "  has_many :#{resource.pluralize}\n"
-      )
+      field = k.gsub('_id', '')
+      add_to_model(field, "has_many :#{resource.pluralize}")
+      add_to_model(resource, "belongs_to :#{field.singularize}")
     end
   end
 
-  def generate_belongs_to
-    @id_fields.map do |k, _|
-      "belongs_to :#{k.gsub('_id', '')}"
-    end.join("\n  ") + "\n"
-  end
-
-  def map_types(input_type: false)
+  def map_types(resource, input_type: false)
     result = args&.map do |k, v|
       field_name = k
       field_type = types_mapping(v)
@@ -370,6 +292,40 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     input_type ? result.gsub("field :id, #{@id_type}\n", '') : result
   end
 
+  # Helpers methods
+
+  def resource_class(resource)
+    resource.pluralize.camelize
+  end
+
+  def add_to_model(model, line)
+    file_name = "app/models/#{model.underscore.singularize}.rb"
+    return unless File.exist?(file_name)
+    unless File.read(file_name).include?(line)
+      write_at(file_name, 3, "  #{line}\n")
+    end
+  end
+
+  def generate_has_many_migration(resource, has_many:)
+    return if belongs_to.singularize.camelize.constantize.new.respond_to?("#{resource.singularize}_id")
+    system("bundle exec rails generate migration add_#{resource.singularize}_id_to_#{belongs_to}")
+    migration_file = Dir.glob("db/migrate/*add_#{resource.singularize}_id_to_#{belongs_to}*").last
+    File.write(
+      migration_file,
+      <<~STRING
+        class Add#{resource.singularize.camelize}IdTo#{belongs_to.camelize} < ActiveRecord::Migration[5.1]
+          def change
+            add_column :#{belongs_to.pluralize}, :#{resource.singularize}_id, :#{@id_db_type}
+          end
+        end
+      STRING
+    )
+  end
+
+  def generate_belongs_to_migration(resource, belongs_to:)
+    generate_has_many_migration(belongs_to, has_many: resource)
+  end
+
   def write_at(file_name, line, data)
     open(file_name, 'r+') do |f|
       while (line -= 1).positive?
@@ -377,18 +333,10 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
       end
       pos = f.pos
       rest = f.read
-      f.seek pos
-      f.write data
-      f.write rest
+      f.seek(pos)
+      f.write(data)
+      f.write(rest)
     end
-  end
-
-  def resource
-    @_resource ||= file_name.singularize.downcase
-  end
-
-  def resource_class
-    @_resource_class ||= resource.pluralize.camelize
   end
 
 end
