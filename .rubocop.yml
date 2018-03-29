@@ -32,7 +32,7 @@ Metrics/AbcSize:
   Max: 40
 
 Metrics/LineLength:
-  Max: 100
+  Max: 120
   Exclude:
     - "lib/tasks/*"
 
