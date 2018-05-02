@@ -61,7 +61,6 @@ class GraphqlMutationsGenerator < Rails::Generators::NamedBase
     )
   end
 
-
   def resource_class(resource)
     @resource_class ||= resource.pluralize.camelize
   end

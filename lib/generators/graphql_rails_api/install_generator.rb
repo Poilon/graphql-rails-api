@@ -297,61 +297,15 @@ module GraphqlRailsApi
         <<~'STRING'
           class ApplicationService
 
-            attr_accessor :params, :object, :includes, :user
+            attr_accessor :params, :object, :fields, :user
 
             def initialize(params: {}, object: nil, object_id: nil, user: nil, context: nil)
               @params = params.to_h.symbolize_keys
-              @includes = generate_includes(context&.irep_node&.scoped_children&.values&.first)
-              @object = object || model.visible_for(user: user).find_by(id: object_id)
+              @context = context
+              @object = object || (object_id && model.visible_for(user: user).find_by(id: object_id))
               @object_id = object_id
               @user = user
             end
-
-            def index
-              result = model.visible_for(user: user).includes(includes)
-              if params[:page] && params[:per_page]
-                page = params[:page].to_i
-                size = params[:per_page].to_i
-                result.offset(size * page).limit(size)
-              else
-                result
-              end
-            end
-
-            def show
-              object = model.visible_for(user: user).includes(includes).find_by(id: object_id)
-              return not_allowed if object.blank?
-              object
-            end
-
-            def create
-              object = model.new(params.select { |p| model_class.new.respond_to?(p) })
-              if object.save
-                object
-              else
-                graphql_error(object.errors.full_messages.join(', '))
-              end
-            end
-
-            def destroy
-              return not_allowed if write_not_allowed
-              if object.destroy
-                {}
-              else
-                graphql_error(object.errors.full_messages.join(', '))
-              end
-            end
-
-            def update
-              return not_allowed if write_not_allowed
-              if object.update_attributes(params)
-                object
-              else
-                graphql_error(object.errors.full_messages.join(', '))
-              end
-            end
-
-            # Class methods
 
             def self.call(resource, meth)
               lambda { |_obj, args, context|
@@ -363,33 +317,52 @@ module GraphqlRailsApi
               }
             end
 
+            def index
+              Graphql::HydrateQuery.new(model.visible_for(user: @user), @context).run
+            end
+
+            def show
+              puts 'SHOW'
+              object = Graphql::HydrateQuery.new(model.visible_for(user: @user), @context, id: params[:id]).run
+              return not_allowed if object.blank?
+              object
+            end
+
+            def create
+              puts 'CREATE'
+              object = model.new(params.select { |p| model.new.respond_to?(p) })
+              if object.save
+                object
+              else
+                graphql_error(object.errors.full_messages.join(', '))
+              end
+            end
+
+            def destroy
+              puts 'DESTROY'
+              object = model.find_by(id: params[:id])
+              return not_allowed if write_not_allowed
+              if object.destroy
+                object
+              else
+                graphql_error(object.errors.full_messages.join(', '))
+              end
+            end
+
+            def update
+              puts "UPDATE, #{params}, #{object}"
+              return not_allowed if write_not_allowed
+              if object.update_attributes(params)
+                object
+              else
+                graphql_error(object.errors.full_messages.join(', '))
+              end
+            end
+
             private
 
-            def generate_includes(fields)
-              hash = parse_fields(fields)
-              remove_keys_with_nil_values(hash)
-            end
-
-            def remove_keys_with_nil_values(hash)
-              hash.symbolize_keys!
-              hash.each_key do |k|
-                if hash[k].nil?
-                  hash.delete(k)
-                else
-                  remove_keys_with_nil_values(hash[k])
-                end
-              end
-            end
-
-            def parse_fields(fields)
-              fields.each_with_object({}) do |(k, v), h|
-                next if k == '__typename'
-                h[k] = v.scoped_children == {} ? nil : parse_fields(v.scoped_children.values.first)
-              end
-            end
-
             def write_not_allowed
-              !model.writable_for(user: user).include?(object) if object
+              !model.visible_for(user: user).include?(object) if object
             end
 
             def access_not_allowed
@@ -417,6 +390,7 @@ module GraphqlRailsApi
             end
 
           end
+
         STRING
       )
     end
