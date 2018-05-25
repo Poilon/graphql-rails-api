@@ -1,5 +1,3 @@
-require 'pry'
-
 class GraphqlResourceGenerator < Rails::Generators::NamedBase
 
   %i[migration model mutations service graphql_input_type graphql_type propagation migrate].each do |opt|
