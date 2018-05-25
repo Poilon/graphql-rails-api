@@ -45,6 +45,7 @@ module Graphql
 
     def ir_to_output(inter_result)
       model_name = inter_result&.first&.first&.first&.first&.to_s
+      return [] if model_name.blank?
       if singular?(model_name)
         ir_node_to_output(inter_result.first)
       else
@@ -59,11 +60,12 @@ module Graphql
         h[attribute.gsub(ir_node.keys.reject { |key| key == :results }.first.first.to_s.pluralize + '.', '')] = v
       end
       relations = ir_node.values&.first&.map { |e| e&.first&.first&.first&.first }
-      relations = relations.zip(ir_node[ir_node.keys.reject { |key| key == :results }&.first]).to_h
-      relations.map do |key, value|
-        t[key] = ir_to_output(value) if value
+      relations.zip(ir_node[ir_node.keys.reject { |key| key == :results }&.first]).to_h.map do |key, value|
+        res = ir_to_output(value)
+        t[key] = res if value
+        t[key].compact! if t[key].is_a?(Array)
       end
-      Struct.new(*t.keys.map(&:to_sym)).new(*t.values) unless t.keys.blank?
+      Struct.new(*t.keys.map(&:to_sym)).new(*t.values) if !t.keys.blank? && !t.values.compact.blank?
     end
 
     def singular?(string)
