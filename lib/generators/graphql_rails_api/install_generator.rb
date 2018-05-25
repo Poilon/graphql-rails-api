@@ -20,6 +20,7 @@ module GraphqlRailsApi
       write_controller
       write_channel if options.action_cable_subs?
       write_initializer
+      write_require_application_rb
       write_uuid_extensions_migration if options.pg_uuid?
     end
 
@@ -42,6 +43,16 @@ module GraphqlRailsApi
   end
 
         STRING
+      )
+    end
+
+    def write_require_application_rb
+      File.write(
+        'config/application.rb',
+        File.read('config/application.rb').gsub(
+          "require 'rails/all'",
+          "require 'rails/all'\nrequire 'graphql/hydrate_query'\n"
+        )
       )
     end
 
@@ -394,6 +405,7 @@ module GraphqlRailsApi
         STRING
       )
     end
+
 
     def write_at(file_name, line, data)
       open(file_name, 'r+') do |f|
