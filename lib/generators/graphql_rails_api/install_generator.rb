@@ -21,10 +21,23 @@ module GraphqlRailsApi
       write_channel if options.action_cable_subs?
       write_initializer
       write_require_application_rb
+      write_route
       write_uuid_extensions_migration if options.pg_uuid?
     end
 
     private
+
+    def write_route
+      route_file = File.read('config/routes.rb')
+      return if route_file.include?('graphql')
+      File.write(
+        'config/routes.rb',
+        route_file.gsub(
+          "Rails.application.routes.draw do\n",
+          "Rails.application.routes.draw do\n  post '/graphql', to: 'graphql#execute'\n"
+        )
+      )
+    end
 
     def write_application_record_methods
       lines_count = File.read('app/models/application_record.rb').lines.count
@@ -51,7 +64,7 @@ module GraphqlRailsApi
         'config/application.rb',
         File.read('config/application.rb').gsub(
           "require 'rails/all'",
-          "require 'rails/all'\nrequire 'graphql/hydrate_query'\n"
+          "require 'rails/all'\nrequire 'graphql/hydrate_query'\nrequire 'graphql/visibility_hash'\n"
         )
       )
     end
