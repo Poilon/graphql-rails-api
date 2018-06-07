@@ -1,10 +1,11 @@
 module Graphql
   class HydrateQuery
 
-    def initialize(model, context, id: nil)
+    def initialize(model, context, id: nil, user: nil)
       @fields = context&.irep_node&.scoped_children&.values&.first
       @model = model
       @id = id
+      @user = user
     end
 
     def run
@@ -16,6 +17,7 @@ module Graphql
       res2d = pluck_to_hash_with_ids(join_model, pluckable_attributes(selectable_values))
       joins_with_root = { model_name.to_sym => remove_keys_with_nil_values(Marshal.load(Marshal.dump(hash))) }
       ir = nest(joins_with_root, res2d).first
+      @visibility_hash = Graphql::VisibilityHash.new(joins_with_root, @user).run
       @id ? ir_to_output(ir).first : ir_to_output(ir)
     end
 
@@ -46,18 +48,19 @@ module Graphql
     def ir_to_output(inter_result)
       model_name = inter_result&.first&.first&.first&.first&.to_s
       return [] if model_name.blank?
-      if singular?(model_name)
-        ir_node_to_output(inter_result.first)
-      else
-        inter_result.map do |ir_node|
-          ir_node_to_output(ir_node) if ir_node
-        end
-      end
+      res = if singular?(model_name)
+              ir_node_to_output(inter_result.first)
+            else
+              inter_result.map { |ir_node| ir_node_to_output(ir_node) if ir_node }
+            end
+      res.compact! if res.is_a?(Array)
+      res
     end
 
     def ir_node_to_output(ir_node)
+      model_name = ir_node.keys.reject { |key| key == :results }.first.first.to_s
       t = ir_node[:results].first.each_with_object({}) do |(attribute, v), h|
-        h[attribute.gsub(ir_node.keys.reject { |key| key == :results }.first.first.to_s.pluralize + '.', '')] = v
+        h[attribute.gsub(model_name.pluralize + '.', '')] = v
       end
       relations = ir_node.values&.first&.map { |e| e&.first&.first&.first&.first }
       relations.zip(ir_node[ir_node.keys.reject { |key| key == :results }&.first]).to_h.map do |key, value|
@@ -65,6 +68,7 @@ module Graphql
         t[key] = res if value
         t[key].compact! if t[key].is_a?(Array)
       end
+      return unless @visibility_hash[model_name.singularize.to_sym]&.include?(t['id'])
       Struct.new(*t.keys.map(&:to_sym)).new(*t.values) if !t.keys.blank? && !t.values.compact.blank?
     end
 

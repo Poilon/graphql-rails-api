@@ -329,18 +329,16 @@ module GraphqlRailsApi
             end
 
             def index
-              Graphql::HydrateQuery.new(model.visible_for(user: @user), @context).run
+              Graphql::HydrateGraphqlQuery.new(model.all, @context, user: user).run
             end
 
             def show
-              puts 'SHOW'
-              object = Graphql::HydrateQuery.new(model.visible_for(user: @user), @context, id: params[:id]).run
+              object = Graphql::HydrateQuery.new(model.all, @context, user: user, id: params[:id]).run
               return not_allowed if object.blank?
               object
             end
 
             def create
-              puts 'CREATE'
               object = model.new(params.select { |p| model.new.respond_to?(p) })
               if object.save
                 object
@@ -350,7 +348,6 @@ module GraphqlRailsApi
             end
 
             def destroy
-              puts 'DESTROY'
               object = model.find_by(id: params[:id])
               return not_allowed if write_not_allowed
               if object.destroy
@@ -361,7 +358,6 @@ module GraphqlRailsApi
             end
 
             def update
-              puts "UPDATE, #{params}, #{object}"
               return not_allowed if write_not_allowed
               if object.update_attributes(params)
                 object
