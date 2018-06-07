@@ -342,7 +342,7 @@ module GraphqlRailsApi
             end
 
             def index
-              Graphql::HydrateGraphqlQuery.new(model.all, @context, user: user).run
+              Graphql::HydrateQuery.new(model.all, @context, user: user).run
             end
 
             def show

@@ -60,19 +60,20 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     @has_many = []
     @many_to_many = []
     @mutations_directory = "#{graphql_resource_directory(@resource)}/mutations"
+    @belongs_to_fields = {}
 
     @args = args.each_with_object({}) do |f, hash|
       next if f.split(':').count != 2
       case f.split(':').first
-      when 'belongs_to' then hash["#{f.split(':').last.singularize}_id"] = @id_db_type
+      when 'belongs_to' then
+        hash["#{f.split(':').last.singularize}_id"] = @id_db_type
+        @belongs_to_fields["#{f.split(':').last.singularize}_id"] = @id_db_type
       when 'has_many' then @has_many << f.split(':').last.pluralize
       when 'many_to_many' then @many_to_many << f.split(':').last.pluralize
       else
         hash[f.split(':').first] = f.split(':').last
       end
     end
-
-    @id_fields = @args.select { |k, _| k.end_with?('_id') }
 
     @fields_to_migration = @args.map do |f|
       "t.#{f.reverse.join(' :')}"
@@ -203,7 +204,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
       add_has_many_fields_to_type(resource, f)
       add_belongs_to_field_to_type(resource, f)
     end
-    @id_fields.each do |f, _|
+    @belongs_to_fields.each do |f, _|
       add_has_many_fields_to_type(f.gsub('_id', ''), resource)
       add_belongs_to_field_to_type(f.gsub('_id', ''), resource)
     end
@@ -260,7 +261,7 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
       add_to_model(resource, "has_many :#{field.pluralize}")
       add_to_model(field, "belongs_to :#{resource.singularize}")
     end
-    @id_fields.each do |k, _|
+    @belongs_to_fields.each do |k, _|
       field = k.gsub('_id', '')
       add_to_model(field, "has_many :#{resource.pluralize}")
       add_to_model(resource, "belongs_to :#{field.singularize}")
@@ -272,7 +273,7 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
       field_name = k
       field_type = types_mapping(v)
       res = "#{input_type ? 'argument' : 'field'} :#{field_name}, #{field_type}"
-      if !input_type && field_name.ends_with?('_id')
+      if !input_type && field_name.ends_with?('_id') && @belongs_to_fields.key?(field_name)
         res += "\n  field :#{field_name.gsub('_id', '')}, " \
           "!#{field_name.gsub('_id', '').pluralize.camelize}::Type"
       end
