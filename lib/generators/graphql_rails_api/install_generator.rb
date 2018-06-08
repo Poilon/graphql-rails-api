@@ -60,12 +60,10 @@ module GraphqlRailsApi
     end
 
     def write_require_application_rb
-      File.write(
+      write_at(
         'config/application.rb',
-        File.read('config/application.rb').gsub(
-          "require 'rails/all'",
-          "require 'rails/all'\nrequire 'graphql/hydrate_query'\nrequire 'graphql/visibility_hash'\n"
-        )
+        5,
+        "require 'graphql/hydrate_query'\nrequire 'graphql/visibility_hash'\n"
       )
     end
 
