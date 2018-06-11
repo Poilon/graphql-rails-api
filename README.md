@@ -25,9 +25,9 @@ To disable Apollo compatibility, add the option `--no-apollo-compatibility`
 Automatically, `post '/graphql', to: 'graphql#execute'` will be added to your `config/route.rb`
 To avoid this, you can just add the option `--no-generate-graphql-route`
 
-## Usage
+# Usage
 
-### Resources generation
+## Resources generation
 
 ```bash
 $ rails generate graphql_resource resource_name field1:string field2:float belongs_to:other_resource_name has_many:other_resources_name many_to_many:other_resources_name
@@ -50,7 +50,7 @@ To disable propagation (has_many creating the id in the other table, many to man
 I made the choice of migrate automatically after generating a resource, to avoid doing it each time.
 You can of course disable the automatic migrate by adding the option `--no-migrate`
 
-### On generating resources
+## On generating resources
 
 ```bash
 $ rails generate graphql_resource computer code:string price:integer power_bench:float belongs_to:user has_many:hard_drives many_to_many:tags
@@ -68,7 +68,7 @@ All of these relations will be propagated to the graphql types.
 
 
 
-### Graphql API example
+## Graphql API example
 
 Example of a backend API: https://github.com/Poilon/graphql-rails-api-example
 
