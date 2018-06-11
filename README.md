@@ -60,7 +60,8 @@ This line will create the data migration, the model and the graphql type of the 
 
 It will automatically add `has_many :computers` to the User model
 
-It will add a computer_id to the `HardDrive` model, and respectively the `has_many :hard_drives` and `belongs_to :computer` to the `Computer` and `HardDrive` models.
+It will add a `computer_id` to the `HardDrive` model, and
+respectively the `has_many :hard_drives` and `belongs_to :computer` to the `Computer` and `HardDrive` models.
 
 The `many_to_many` option will make the `has_many through` association and create the join table between tag and computer.
 
