@@ -7,11 +7,11 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   TYPES_MAPPING = {
     'id' => '!types.ID',
     'uuid' => '!types.String',
-    'text' => 'types.String',
-    'datetime' => 'types.String',
+    'boolean' => 'types.Boolean',
+    'float' => 'types.Float',
+    'decimal' => 'types.Float',
     'integer' => 'types.Int',
-    'json' => 'types.String',
-    'jsonb' => 'types.String'
+    'bigint' => 'types.Int'
   }.freeze
 
   def create_graphql_files
@@ -44,7 +44,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   private
 
   def types_mapping(type)
-    TYPES_MAPPING[type] || "types.#{type.capitalize}"
+    TYPES_MAPPING[type] || "types.String"
   end
 
   def parse_args

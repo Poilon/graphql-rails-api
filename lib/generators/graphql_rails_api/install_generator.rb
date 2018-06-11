@@ -6,6 +6,7 @@ module GraphqlRailsApi
     class_option('apollo_compatibility', type: :boolean, default: true)
     class_option('action_cable_subs', type: :boolean, default: true)
     class_option('pg_uuid', type: :boolean, default: true)
+    class_option('generate_graphql_route', type: :boolean, default: true)
 
     def generate_files
       @app_name = File.basename(Rails.root.to_s).underscore
@@ -18,10 +19,13 @@ module GraphqlRailsApi
       write_mutation_type
       write_subscription_type
       write_controller
-      write_channel if options.action_cable_subs?
+      if options.action_cable_subs?
+        write_websocket_connection
+        write_channel
+      end
       write_initializer
       write_require_application_rb
-      write_route
+      write_route if options.generate_graphql_route?
       write_uuid_extensions_migration if options.pg_uuid?
     end
 
@@ -97,6 +101,26 @@ module GraphqlRailsApi
 
           # Possibilites are :create, :update or :destroy
           config.basic_mutations = %i[create update destroy]
+        STRING
+      )
+    end
+
+    def write_websocket_connection
+      File.write(
+        'app/channels/application_cable/connection.rb',
+        <<~'STRING'
+          module ApplicationCable
+            class Connection < ActionCable::Connection::Base
+
+              identified_by :current_user
+
+              def connect
+                # Check authentication, and define current user
+                self.current_user = nil
+              end
+
+            end
+          end
         STRING
       )
     end
@@ -179,7 +203,8 @@ module GraphqlRailsApi
             def authenticated_user
               # Here you need to authenticate the user.
               # You can use devise, then just write:
-              current_user
+
+              # current_user
             end
 
             # Handle form data, JSON body, or a blank value
@@ -412,7 +437,6 @@ module GraphqlRailsApi
         STRING
       )
     end
-
 
     def write_at(file_name, line, data)
       open(file_name, 'r+') do |f|
