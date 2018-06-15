@@ -10,15 +10,16 @@ module Graphql
 
     def run
       hash = parse_fields(@fields)
-      selectable_values = transform_to_selectable_values(hash)
+      # selectable_values = transform_to_selectable_values(hash)
       joins = remove_keys_with_nil_values(Marshal.load(Marshal.dump(hash)))
       join_model = @model.includes(joins)
-      join_model = join_model.where(id: @id) if @id.present?
-      res2d = pluck_to_hash_with_ids(join_model, pluckable_attributes(selectable_values))
-      joins_with_root = { model_name.to_sym => remove_keys_with_nil_values(Marshal.load(Marshal.dump(hash))) }
-      ir = nest(joins_with_root, res2d).first
-      @visibility_hash = Graphql::VisibilityHash.new(joins_with_root, @user).run
-      @id ? ir_to_output(ir).first : ir_to_output(ir)
+      @id ? join_model.find_by(id: @id) : join_model
+      # join_model = join_model.where(id: @id) if @id.present?
+      # res2d = pluck_to_hash_with_ids(join_model, pluckable_attributes(selectable_values))
+      # joins_with_root = { model_name.to_sym => remove_keys_with_nil_values(Marshal.load(Marshal.dump(hash))) }
+      # ir = nest(joins_with_root, res2d).first
+      # @visibility_hash = Graphql::VisibilityHash.new(joins_with_root, @user).run
+      # @id ? ir_to_output(ir).first : ir_to_output(ir)
     end
 
     def pluck_to_hash_with_ids(model, keys)
