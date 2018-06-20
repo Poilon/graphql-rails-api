@@ -10,122 +10,32 @@ module Graphql
 
     def run
       hash = parse_fields(@fields)
-      # selectable_values = transform_to_selectable_values(hash)
-      joins = remove_keys_with_nil_values(Marshal.load(Marshal.dump(hash)))
-      join_model = @model.includes(joins)
-      @id ? join_model.find_by(id: @id) : join_model
-      # join_model = join_model.where(id: @id) if @id.present?
-      # res2d = pluck_to_hash_with_ids(join_model, pluckable_attributes(selectable_values))
-      # joins_with_root = { model_name.to_sym => remove_keys_with_nil_values(Marshal.load(Marshal.dump(hash))) }
-      # ir = nest(joins_with_root, res2d).first
-      # @visibility_hash = Graphql::VisibilityHash.new(joins_with_root, @user).run
-      # @id ? ir_to_output(ir).first : ir_to_output(ir)
+      array = hash_to_array_of_hashes(hash, @model)
+      @model = @model.where(id: @id) if @id
+      plucked = @model.deep_pluck(*array)
+      result = plucked_attr_to_structs(plucked)
+      @id ? result.first : result
     end
 
-    def pluck_to_hash_with_ids(model, keys)
-      keys.each do |k|
-        resource = k.split('.').first
-        keys << "#{resource.pluralize}.id" unless keys.include?("#{resource}.id")
-      end
-      keys = keys.compact.uniq
-      model.pluck(*keys).map do |pa|
-        Hash[keys.zip([pa].flatten)]
+    def plucked_attr_to_structs(arr)
+      arr.map { |e| hash_to_struct(e) }
+    end
+
+    def hash_to_struct(hash)
+      hash.each_with_object(OpenStruct.new) do |(k, v), struct|
+        next struct[k.to_sym] = plucked_attr_to_structs(v) if v.is_a?(Array)
+        next struct[k.to_sym] = hash_to_struct(v) if v.is_a?(Hash)
+        struct[k.to_sym] = v
       end
     end
 
-    def pluckable_attributes(keys)
-      db_attributes = keys.uniq.map { |k| k.gsub(/\..*$/, '') }.uniq.map do |resource|
-        next unless Object.const_defined?(resource.singularize.camelize)
-        resource.singularize.camelize.constantize.new.attributes.keys.map do |attribute|
-          "#{resource}.#{attribute}"
-        end
-      end.flatten.compact
-      keys.select { |e| db_attributes.flatten.include?(e) }.map do |e|
-        split = e.split('.')
-        "#{split.first.pluralize}.#{split.last}"
+    def hash_to_array_of_hashes(hash, parent_class)
+      return if parent_class.nil?
+      hash.each_with_object([]) do |(k, v), arr|
+        next arr << k if v.blank? && parent_class.new.attributes.key?(k)
+        klass = evaluate_model(parent_class, k)
+        arr << { k.to_sym => hash_to_array_of_hashes(v, klass) } if klass.present? && v.present?
       end
-    end
-
-    def ir_to_output(inter_result)
-      model_name = inter_result&.first&.first&.first&.first&.to_s
-      return [] if model_name.blank?
-      res = if singular?(model_name)
-              ir_node_to_output(inter_result.first)
-            else
-              inter_result.map { |ir_node| ir_node_to_output(ir_node) if ir_node }
-            end
-      res.compact! if res.is_a?(Array)
-      res
-    end
-
-    def ir_node_to_output(ir_node)
-      model_name = ir_node.keys.reject { |key| key == :results }.first.first.to_s
-      t = ir_node[:results].first.each_with_object({}) do |(attribute, v), h|
-        h[attribute.gsub(model_name.pluralize + '.', '')] = v
-      end
-      relations = ir_node.values&.first&.map { |e| e&.first&.first&.first&.first }
-      relations.zip(ir_node[ir_node.keys.reject { |key| key == :results }&.first]).to_h.map do |key, value|
-        res = ir_to_output(value)
-        t[key] = res if value
-        t[key].compact! if t[key].is_a?(Array)
-      end
-      return unless @visibility_hash[model_name.singularize.to_sym]&.include?(t['id'])
-      Struct.new(*t.keys.map(&:to_sym)).new(*t.values) if !t.keys.blank? && !t.values.compact.blank?
-    end
-
-    def singular?(string)
-      string.singularize == string
-    end
-
-    def nest(joins, res)
-      joins.map do |relation_name, other_joins|
-        res.group_by do |row|
-          [relation_name, row["#{relation_name.to_s.pluralize}.id"]]
-        end.map do |k, ungrouped|
-          Hash[k, nest(other_joins, ungrouped)].merge(results: extract_values_of_level(k[0], ungrouped).uniq)
-        end
-      end
-    end
-
-    def extract_values_of_level(level, ungrouped)
-      ungrouped.map do |row|
-        row.select { |k, _| k =~ /#{level.to_s.pluralize}.*/ }
-      end
-    end
-
-    def transform_to_selectable_values(hash, res = nil)
-      @values ||= []
-      hash.each do |k, v|
-        if v.nil?
-          @values << "#{res || model_name}.#{k}" unless activerecord_model?(k)
-        else
-          next @values << "#{res || model_name}.#{k}" unless activerecord_model?(k)
-          transform_to_selectable_values(v, k)
-        end
-      end
-      @values
-    end
-
-    def remove_keys_with_nil_values(hash)
-      hash.symbolize_keys!
-      hash.each_key do |k|
-        if hash[k].nil? || !activerecord_model?(k)
-          hash.delete(k)
-        else
-          remove_keys_with_nil_values(hash[k])
-        end
-      end
-    end
-
-    def parse_fields(fields)
-      fields.each_with_object({}) do |(k, v), h|
-        next if k == '__typename'
-        h[k] = v.scoped_children == {} ? nil : parse_fields(v.scoped_children.values.first)
-      end
-    end
-
-    def model_name
-      @model.class.to_s.split('::').first.underscore.pluralize
     end
 
     def activerecord_model?(name)
@@ -135,6 +45,24 @@ module Graphql
       rescue NameError
         false
       end
+    end
+
+    def evaluate_model(parent, child)
+      child_class_name = child.to_s.singularize.camelize
+      parent_class_name = parent.to_s.singularize.camelize
+      return child_class_name.constantize if activerecord_model?(child_class_name)
+      return unless activerecord_model?(parent_class_name)
+      parent_class_name.constantize.reflections[child.to_s.underscore]&.klass
+    end
+
+    def parse_fields(fields)
+      fields.each_with_object({}) do |(k, v), h|
+        h[k] = v.scoped_children == {} ? nil : parse_fields(v.scoped_children.values.first)
+      end
+    end
+
+    def model_name
+      @model.class.to_s.split('::').first.underscore.pluralize
     end
 
   end

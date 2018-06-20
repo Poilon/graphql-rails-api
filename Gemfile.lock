@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    graphql-rails-api (0.1.5)
+    graphql-rails-api (0.1.6)
       graphql (~> 1.7)
       rails (~> 5.1)
 
@@ -53,6 +53,9 @@ GEM
     builder (3.2.3)
     concurrent-ruby (1.0.5)
     crass (1.0.4)
+    deep_pluck (1.1.0)
+      activerecord (>= 3)
+      pluck_all (>= 1.2.3)
     erubi (1.7.1)
     globalid (0.4.1)
       activesupport (>= 4.2.0)
@@ -72,8 +75,10 @@ GEM
     mini_portile2 (2.3.0)
     minitest (5.11.3)
     nio4r (2.3.1)
-    nokogiri (1.8.2)
+    nokogiri (1.8.3)
       mini_portile2 (~> 2.3.0)
+    pluck_all (2.0.1)
+      activerecord (>= 3)
     rack (2.0.5)
     rack-test (1.0.0)
       rack (>= 1.0, < 3)
@@ -121,6 +126,7 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
+  deep_pluck
   graphql
   graphql-rails-api!
 
