@@ -67,7 +67,7 @@ module GraphqlRailsApi
       write_at(
         'config/application.rb',
         5,
-        "require 'graphql/hydrate_query'\nrequire 'graphql/visibility_hash'\n"
+        "require 'graphql/hydrate_query'\n"
       )
     end
 
