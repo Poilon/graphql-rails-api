@@ -18,6 +18,6 @@ Gem::Specification.new do |s|
 
   s.add_dependency 'deep_pluck', '~> 1.1.0'
   s.add_dependency 'graphql', '~> 1.7'
-  s.add_dependency 'rails', '~> 5.1'
+  s.add_dependency 'rails', '~> 5.2.0'
 
 end

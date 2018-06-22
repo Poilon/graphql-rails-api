@@ -1,3 +1,5 @@
+require 'deep_pluck'
+
 module Graphql
   class HydrateQuery
 

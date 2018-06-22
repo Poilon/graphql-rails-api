@@ -4,7 +4,7 @@ PATH
     graphql-rails-api (0.2.2)
       deep_pluck (~> 1.1.0)
       graphql (~> 1.7)
-      rails (~> 5.1)
+      rails (~> 5.2.0)
 
 GEM
   remote: https://rubygems.org/
