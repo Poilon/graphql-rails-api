@@ -2,6 +2,9 @@
 
 `graphql-rails-api` is a gem that provides generators to describe easily your graphql API in a domain driven design way.
 
+Need any help or wanna talk with me about it on slack ? Don't hesitate, 
+https://bit.ly/2KvV8Pk
+
 ## Installation
 Add these lines to your application's Gemfile:
 
