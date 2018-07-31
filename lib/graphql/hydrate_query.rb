@@ -33,8 +33,10 @@ module Graphql
     end
 
     def visibility_hash
-      @visibility_hash ||= @models.each_with_object({}) do |model, hash|
-        hash[model.constantize] = model.constantize.visible_for(user: @user).pluck(:id)
+      @visibility_hash ||= @models.reject(&:blank?).each_with_object({}) do |model, hash|
+        visible = model.constantize.visible_for(user: @user)
+        next if visible.blank?
+        hash[model.constantize] = visible.pluck(:id)
       end
     end
 
