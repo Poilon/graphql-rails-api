@@ -24,10 +24,13 @@ module Graphql
     end
 
     def hash_to_struct(hash, parent_model)
+      return if visibility_hash[parent_model].blank?
       return if !visibility_hash[parent_model].include?(hash['id']) && @check_visibility
+
       hash.each_with_object(OpenStruct.new) do |(k, v), struct|
         next struct[k.to_sym] = plucked_attr_to_structs(v, evaluate_model(parent_model, k)) if v.is_a?(Array)
         next struct[k.to_sym] = hash_to_struct(v, evaluate_model(parent_model, k)) if v.is_a?(Hash)
+
         struct[k.to_sym] = v
       end
     end
@@ -36,15 +39,18 @@ module Graphql
       @visibility_hash ||= @models.reject(&:blank?).each_with_object({}) do |model, hash|
         visible = model.constantize.visible_for(user: @user)
         next if visible.blank?
+
         hash[model.constantize] = visible.pluck(:id)
       end
     end
 
     def hash_to_array_of_hashes(hash, parent_class)
       return if parent_class.nil?
+
       hash['id'] = nil if hash['id'].blank?
       hash.each_with_object([]) do |(k, v), arr|
         next arr << k if v.blank? && parent_class.new.attributes.key?(k)
+
         klass = evaluate_model(parent_class, k)
         @models << klass.to_s unless @models.include?(klass.to_s)
         arr << { k.to_sym => hash_to_array_of_hashes(v, klass) } if klass.present? && v.present?
@@ -65,6 +71,7 @@ module Graphql
       parent_class_name = parent.to_s.singularize.camelize
       return child_class_name.constantize if activerecord_model?(child_class_name)
       return unless activerecord_model?(parent_class_name)
+
       parent_class_name.constantize.reflections[child.to_s.underscore]&.klass
     end
 
