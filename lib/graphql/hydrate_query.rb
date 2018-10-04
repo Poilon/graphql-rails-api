@@ -15,7 +15,7 @@ module Graphql
     def run
       @model = @model.where(id: @id) if @id
       plucked = @model.deep_pluck(*hash_to_array_of_hashes(parse_fields(@fields), @model))
-      result = plucked_attr_to_structs(plucked, model_name.singularize.camelize.constantize)
+      result = plucked_attr_to_structs(plucked, model_name.singularize.camelize.constantize)&.compact
       @id ? result.first : result
     end
 
@@ -24,8 +24,10 @@ module Graphql
     end
 
     def hash_to_struct(hash, parent_model)
-      return OpenStruct.new if visibility_hash[parent_model].blank?
-      return if !visibility_hash[parent_model].include?(hash['id']) && @check_visibility
+      if @check_visibility &&
+          (visibility_hash[parent_model].blank? || !visibility_hash[parent_model].include?(hash['id']))
+        return
+      end
 
       hash.each_with_object(OpenStruct.new) do |(k, v), struct|
         next struct[k.to_sym] = plucked_attr_to_structs(v, evaluate_model(parent_model, k)) if v.is_a?(Array)
