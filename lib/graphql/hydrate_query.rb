@@ -24,7 +24,7 @@ module Graphql
     end
 
     def hash_to_struct(hash, parent_model)
-      return if visibility_hash[parent_model].blank?
+      return [] if visibility_hash[parent_model].blank?
       return if !visibility_hash[parent_model].include?(hash['id']) && @check_visibility
 
       hash.each_with_object(OpenStruct.new) do |(k, v), struct|
