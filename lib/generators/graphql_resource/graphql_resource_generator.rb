@@ -290,9 +290,7 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
 
   def add_to_model(model, line)
     file_name = "app/models/#{model.underscore.singularize}.rb"
-    return unless File.exist?(file_name)
-
-    return if File.read(file_name).include?(line)
+    return if !File.exist?(file_name) || File.read(file_name).include?(line)
 
     line_count = `wc -l "#{file_name}"`.strip.split(' ')[0].to_i
 
