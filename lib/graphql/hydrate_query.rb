@@ -14,7 +14,7 @@ module Graphql
 
     def run
       @model = @model.where(id: @id) if @id
-      plucked = @model.deep_pluck(*hash_to_array_of_hashes(parse_fields(@fields), @model))
+      plucked = @model.deep_pluck(*hash_to_array_of_hashes(fields_to_hash(@fields), @model))
       result = plucked_attr_to_structs(plucked, model_name.singularize.camelize.constantize)&.compact
       @id ? result.first : result
     end
@@ -30,8 +30,10 @@ module Graphql
       end
 
       hash.each_with_object(OpenStruct.new) do |(k, v), struct|
-        next struct[k.to_sym] = plucked_attr_to_structs(v, evaluate_model(parent_model, k)) if v.is_a?(Array)
-        next struct[k.to_sym] = hash_to_struct(v, evaluate_model(parent_model, k)) if v.is_a?(Hash)
+        m = evaluate_model(parent_model, k)
+        next struct[k.to_sym] = plucked_attr_to_structs(v, m) if v.is_a?(Array) && m
+
+        next struct[k.to_sym] = hash_to_struct(v, m) if v.is_a?(Hash) && m
 
         struct[k.to_sym] = v
       end
@@ -39,10 +41,10 @@ module Graphql
 
     def visibility_hash
       @visibility_hash ||= @models.reject(&:blank?).each_with_object({}) do |model, hash|
-        visible = model.constantize.visible_for(user: @user)
-        next if visible.blank?
+        visible_ids = model.constantize.visible_for(user: @user)&.pluck(:id)
+        next if visible_ids.blank?
 
-        hash[model.constantize] = visible.pluck(:id)
+        hash[model.constantize] = visible_ids
       end
     end
 
@@ -50,12 +52,25 @@ module Graphql
       return if parent_class.nil?
 
       hash['id'] = nil if hash['id'].blank?
+      fetch_ids_from_relation(hash)
+
       hash.each_with_object([]) do |(k, v), arr|
-        next arr << k if v.blank? && parent_class.new.attributes.key?(k)
+        next arr << k if parent_class.new.attributes.key?(k)
 
         klass = evaluate_model(parent_class, k)
         @models << klass.to_s unless @models.include?(klass.to_s)
         arr << { k.to_sym => hash_to_array_of_hashes(v, klass) } if klass.present? && v.present?
+      end
+    end
+
+    def fetch_ids_from_relation(hash)
+      hash.select { |k, _| k.ends_with?('_ids') }.each do |(k, _)|
+        collection_name = k.gsub('_ids', '').pluralize
+        if hash[collection_name].blank?
+          hash[collection_name] = { 'id' => nil }
+        else
+          hash[collection_name]['id'] = nil
+        end
       end
     end
 
@@ -77,9 +92,9 @@ module Graphql
       parent_class_name.constantize.reflections[child.to_s.underscore]&.klass
     end
 
-    def parse_fields(fields)
+    def fields_to_hash(fields)
       fields.each_with_object({}) do |(k, v), h|
-        h[k] = v.scoped_children == {} ? nil : parse_fields(v.scoped_children.values.first)
+        h[k] = v.scoped_children == {} ? nil : fields_to_hash(v.scoped_children.values.first)
       end
     end
 
