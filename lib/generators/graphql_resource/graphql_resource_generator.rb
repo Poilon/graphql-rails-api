@@ -291,12 +291,24 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
   def add_to_model(model, line)
     file_name = "app/models/#{model.underscore.singularize}.rb"
     return unless File.exist?(file_name)
+
     return if File.read(file_name).include?(line)
-    write_at(file_name, 3, "  #{line}\n")
+
+    line_count = `wc -l "#{filename}"`.strip.split(' ')[0].to_i
+
+    line_nb = 0
+    File.each_line(file_name) do |l|
+      line_nb += 1
+      break if line.include?('ApplicationRecord')
+    end
+    raise 'Your model must inherit from ApplicationRecord to make it work' if line_nb >= line_count
+
+    write_at(file_name, line_nb, "  #{line}\n")
   end
 
   def generate_has_many_migration(resource, has_many:)
     return if has_many.singularize.camelize.constantize.new.respond_to?("#{resource.singularize}_id")
+
     system("bundle exec rails generate migration add_#{resource.singularize}_id_to_#{has_many}")
     migration_file = Dir.glob("db/migrate/*add_#{resource.singularize}_id_to_#{has_many}*").last
     File.write(
