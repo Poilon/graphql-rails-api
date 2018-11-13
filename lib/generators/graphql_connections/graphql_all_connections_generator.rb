@@ -3,7 +3,7 @@ class GraphqlAllConnectionsGenerator < Rails::Generators::NamedBase
   def generate
     Graphql::Rails::Api::Config.query_resources.each do |resource|
       dir = "app/graphql/#{resource.pluralize}"
-      generate_connection(dir, resource)
+      generate_connection(dir, resource) if Dir.exist?(dir)
     end
   end
 

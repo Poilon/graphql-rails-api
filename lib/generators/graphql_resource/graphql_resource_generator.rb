@@ -86,7 +86,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
 
   def generate_create_migration(resource, fields)
     system("bundle exec rails generate migration create_#{resource} --skip")
-    migration_file = Dir.glob("db/migrate/*create_#{resource}*").last
+    migration_file = Dir.glob("db/migrate/*create_#{resource}").last
     File.write(
       migration_file,
       <<~STRING
