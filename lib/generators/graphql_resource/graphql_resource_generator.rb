@@ -86,11 +86,11 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
 
   def generate_create_migration(resource, fields)
     system("bundle exec rails generate migration create_#{resource} --skip")
-    migration_file = Dir.glob("db/migrate/*create_#{resource}").last
+    migration_file = Dir.glob("db/migrate/*create_#{resource}.rb").last
     File.write(
       migration_file,
       <<~STRING
-        class Create#{resource.camelize} < ActiveRecord::Migration[5.1]
+        class Create#{resource.camelize} < ActiveRecord::Migration[5.2]
           def change
             create_table :#{resource.pluralize}, #{'id: :uuid ' if Graphql::Rails::Api::Config.instance.id_type == :uuid}do |t|
               #{fields}
@@ -300,6 +300,7 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
     File.each_line(file_name) do |l|
       line_nb += 1
       break if line.include?('ApplicationRecord')
+
     end
     raise 'Your model must inherit from ApplicationRecord to make it work' if line_nb >= line_count
 
@@ -310,11 +311,11 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
     return if has_many.singularize.camelize.constantize.new.respond_to?("#{resource.singularize}_id")
 
     system("bundle exec rails generate migration add_#{resource.singularize}_id_to_#{has_many}")
-    migration_file = Dir.glob("db/migrate/*add_#{resource.singularize}_id_to_#{has_many}*").last
+    migration_file = Dir.glob("db/migrate/*add_#{resource.singularize}_id_to_#{has_many}.rb").last
     File.write(
       migration_file,
       <<~STRING
-        class Add#{resource.singularize.camelize}IdTo#{has_many.camelize} < ActiveRecord::Migration[5.1]
+        class Add#{resource.singularize.camelize}IdTo#{has_many.camelize} < ActiveRecord::Migration[5.2]
           def change
             add_column :#{has_many.pluralize}, :#{resource.singularize}_id, :#{@id_db_type}
           end
