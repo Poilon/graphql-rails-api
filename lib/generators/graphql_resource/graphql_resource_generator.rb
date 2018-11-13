@@ -294,17 +294,16 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
 
     return if File.read(file_name).include?(line)
 
-    line_count = `wc -l "#{filename}"`.strip.split(' ')[0].to_i
+    line_count = `wc -l "#{file_name}"`.strip.split(' ')[0].to_i
 
     line_nb = 0
-    File.each_line(file_name) do |l|
+    File.open(file_name).each do |l|
       line_nb += 1
-      break if line.include?('ApplicationRecord')
-
+      break if l.include?('ApplicationRecord')
     end
     raise 'Your model must inherit from ApplicationRecord to make it work' if line_nb >= line_count
 
-    write_at(file_name, line_nb, "  #{line}\n")
+    write_at(file_name, line_nb + 2, "  #{line}\n")
   end
 
   def generate_has_many_migration(resource, has_many:)
