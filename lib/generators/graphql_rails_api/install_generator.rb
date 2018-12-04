@@ -21,7 +21,8 @@ module GraphqlRailsApi
       write_controller
       if options.action_cable_subs?
         write_websocket_connection
-        write_channel
+        write_online_users_channel
+        write_graphql_channel
       end
       write_initializer
       write_require_application_rb
@@ -57,6 +58,45 @@ module GraphqlRailsApi
 
   def self.writable_by(*)
     all
+  end
+
+        STRING
+      )
+      return unless options.action_cable_subs?
+
+      lines_count = File.read('app/models/application_record.rb').lines.count
+      write_at(
+        'app/models/application_record.rb',
+        lines_count,
+        <<-STRING
+  after_commit :notify_online_users
+
+  def notify_online_users
+    Redis.current.keys('#{Rails.application.class.parent_name.underscore}_subscribed_query_*').each_with_object({}) do |key, hash|
+      hash[
+        key.gsub('#{Rails.application.class.parent_name.underscore}_subscribed_query_', '')
+      ] = Redis.current.hgetall(key).each_with_object([]) do |(data, vars), array|
+        data = data.split('/////')
+        array << { query: data[0], store: data[1], variables: vars.blank? ? nil : JSON.parse(vars), scope: data[2] }
+      end
+    end.each do |user_id, user_queries_array|
+      user_queries_array.map { |user_hash| notify_user(user_id, user_hash) }
+    end
+  end
+
+  def notify_user(user_id, user_hash)
+    model_name = self.class.to_s.underscore
+    if !user_hash[:query].include?(model_name.singularize + '(id: $id') &&
+        !user_hash[:query].include?(' ' + model_name.pluralize)
+      return
+    end
+    return if user_hash[:query].include?(model_name + '(id: $id') && user_hash[:variables]['id'] != id
+
+    u = User.find_by(id: user_id)
+    return unless u
+
+    result = #{Rails.application.class.parent_name}ApiSchema.execute(user_hash[:query], context: { current_user: u }, variables: user_hash[:variables])
+    OnlineUsersChannel.broadcast_to(u, store: user_hash[:store], scope: user_hash[:scope], result: result['data'])
   end
 
         STRING
@@ -125,7 +165,50 @@ module GraphqlRailsApi
       )
     end
 
-    def write_channel
+    def write_online_users_channel
+      File.write(
+        'app/channels/online_users_channel.rb',
+        <<~STRING
+          class OnlineUsersChannel < ApplicationCable::Channel
+
+            def subscribed
+              stream_for(current_user)
+              Redis.current.hset('#{Rails.application.class.parent_name.underscore}_online_users', current_user.id, '1')
+              User.online.each do |user|
+                OnlineUsersChannel.broadcast_to(user, User.online_user_ids)
+              end
+            end
+
+            def subscribe_to_query(data)
+              Redis.current.hset(
+                '#{Rails.application.class.parent_name.underscore}_subscribed_query_' + current_user.id,
+                data['query'] + '/////' + data['store'] + '/////' + data['scope'],
+                data['variables']
+              )
+            end
+
+            def unsubscribe_to_query(data)
+              Redis.current.hdel(
+                '#{Rails.application.class.parent_name.underscore}_subscribed_query_' + current_user.id,
+                data['query'] + '/////' + data['store']
+              )
+            end
+
+            def unsubscribed
+              Redis.current.hset('#{Rails.application.class.parent_name.underscore}_online_users', current_user.id, '0')
+              Redis.current.hdel('#{Rails.application.class.parent_name.underscore}_subscribed_query_' + current_user.id, current_user.id)
+              User.online.each do |user|
+                OnlineUsersChannel.broadcast_to(user, User.online_user_ids)
+              end
+            end
+
+          end
+
+        STRING
+      )
+    end
+
+    def write_graphql_channel
       File.write(
         'app/channels/graphql_channel.rb',
         <<~STRING
@@ -347,7 +430,7 @@ module GraphqlRailsApi
             attr_accessor :params, :object, :fields, :user
 
             def initialize(params: {}, object: nil, object_id: nil, user: nil, context: nil)
-              @params = params.to_h.symbolize_keys
+              @params = params.is_a?(Array) ? params.map { |p| p.to_h.symbolize_keys } : params.to_h.symbolize_keys
               @context = context
               @object = object || (object_id && model.visible_for(user: user).find_by(id: object_id))
               @object_id = object_id
@@ -365,51 +448,76 @@ module GraphqlRailsApi
             end
 
             def index
-              Graphql::HydrateQuery.new(model.all, @context, user: user).run
+              HydrateQuery.new(
+                model.all,
+                @context,
+                order_by: params[:order_by],
+                filter: params[:filter],
+                user: user
+              ).run
             end
 
             def show
-              object = Graphql::HydrateQuery.new(model.all, @context, user: user, id: params[:id]).run
-              return not_allowed if object.blank?
-              object
+              return not_allowed if access_not_allowed
+
+              showed_resource = HydrateQuery.new(model.all, @context, user: user, id: object.id).run
+
+              return not_allowed if showed_resource.blank?
+
+              showed_resource
             end
 
             def create
-              object = model.new(params.select { |p| model.new.respond_to?(p) })
-              if object.save
-                object
-              else
-                graphql_error(object.errors.full_messages.join(', '))
-              end
-            end
+              if user&.action?("can_create_#{singular_resource}")
+                created_resource = model.new(params.select { |p| model.new.respond_to?(p) })
+                return not_allowed if not_allowed_to_create_resource(created_resource)
 
-            def destroy
-              object = model.find_by(id: params[:id])
-              return not_allowed if write_not_allowed
-              if object.destroy
-                object
+                created_resource.save ? created_resource : graphql_error(created_resource.errors.full_messages.join(', '))
+              elsif user&.action?("can_create_#{singular_resource}_with_verif")
+                Verification.create(action: 'create', model: model.to_s, params: params, user_id: user.id)
+                graphql_error("Pending verification for a #{singular_resource} creation")
               else
-                graphql_error(object.errors.full_messages.join(', '))
+                not_allowed
               end
             end
 
             def update
               return not_allowed if write_not_allowed
-              if object.update_attributes(params)
-                object
+
+              if user.action?("can_update_#{singular_resource}")
+                object.update_attributes(params) ? object : graphql_error(object.errors.full_messages.join(', '))
+              elsif user.action?("can_update_#{singular_resource}_with_verif")
+                create_update_verification
               else
-                graphql_error(object.errors.full_messages.join(', '))
+                not_allowed
               end
+            end
+
+            def destroy
+              return not_allowed if write_not_allowed || !user.action?("can_delete_#{singular_resource}")
+
+              object.destroy ? object : graphql_error(object.errors.full_messages.join(', '))
             end
 
             private
 
+            def create_update_verification
+              Verification.create(
+                action: 'update', model: model.to_s, params: params.merge(id: object.id), user_id: user.id
+              )
+              graphql_error("Pending verification for a #{singular_resource} update")
+            end
+
             def write_not_allowed
-              !model.visible_for(user: user).include?(object) if object
+              return true unless object
+
+              !model.writable_for(user: user).pluck(:id).include?(object.id)
             end
 
             def access_not_allowed
-              !model.visible_for(user: user).include?(object) if object
+              return true unless object
+
+              !model.visible_for(user: user).pluck(:id).include?(object.id)
             end
 
             def not_allowed
@@ -432,7 +540,22 @@ module GraphqlRailsApi
               self.class.to_s.split(':').first.underscore
             end
 
+            def not_allowed_to_create_resource(created_resource)
+              params.select { |k, _| k.to_s.end_with?('_id') }.each do |belongs_relation, rel_id|
+                klass = created_resource.class.reflect_on_association(belongs_relation.to_s.gsub('_id', '')).klass
+                return true if rel_id.present? && !klass.visible_for(user: user).pluck(:id).include?(rel_id)
+              end
+
+              params.select { |k, _| k.to_s.end_with?('_ids') }.each do |many_relation, rel_ids|
+                klass = created_resource.class.reflect_on_association(many_relation.to_s.gsub('_ids', '').pluralize).klass
+                ids = klass.visible_for(user: user).pluck(:id)
+                rel_ids.each { |id| return true if id.present? && !ids.include?(id) }
+              end
+              false
+            end
+
           end
+
 
         STRING
       )

@@ -1,10 +1,13 @@
 require 'deep_pluck'
+require 'rkelly'
 
 module Graphql
   class HydrateQuery
 
-    def initialize(model, context, check_visibility: true, id: nil, user: nil)
-      @fields = context&.irep_node&.scoped_children&.values&.first
+    def initialize(model, context, order_by: nil, filter: nil, check_visibility: true, id: nil, user: nil)
+      @context = context
+      @filter = filter
+      @order_by = order_by
       @model = model
       @models = [model_name.singularize.camelize]
       @check_visibility = check_visibility
@@ -13,10 +16,17 @@ module Graphql
     end
 
     def run
+      @model = @model.where(transform_filter(@filter)) if @filter
+      @model = @model.order(@order_by) if @order_by
       @model = @model.where(id: @id) if @id
-      plucked = @model.deep_pluck(*hash_to_array_of_hashes(fields_to_hash(@fields), @model))
+      plucked = @model.deep_pluck(*hash_to_array_of_hashes(parse_fields(@context&.irep_node), @model))
       result = plucked_attr_to_structs(plucked, model_name.singularize.camelize.constantize)&.compact
       @id ? result.first : result
+    end
+
+    def transform_filter(filter)
+      parsed_filter = RKelly::Parser.new.parse(filter).to_ecma
+      parsed_filter.gsub('||', 'OR').gsub('&&', 'AND').gsub('===', '=').gsub('==', '=').delete(';')
     end
 
     def plucked_attr_to_structs(arr, parent_model)
@@ -49,7 +59,7 @@ module Graphql
     end
 
     def hash_to_array_of_hashes(hash, parent_class)
-      return if parent_class.nil?
+      return if parent_class.nil? || hash.nil?
 
       hash['id'] = nil if hash['id'].blank?
       fetch_ids_from_relation(hash)
@@ -87,14 +97,21 @@ module Graphql
       child_class_name = child.to_s.singularize.camelize
       parent_class_name = parent.to_s.singularize.camelize
       return child_class_name.constantize if activerecord_model?(child_class_name)
+
       return unless activerecord_model?(parent_class_name)
 
       parent_class_name.constantize.reflections[child.to_s.underscore]&.klass
     end
 
-    def fields_to_hash(fields)
+    def parse_fields(irep_node)
+      fields = irep_node&.scoped_children&.values&.first
+      if fields.key?('edges')
+        fields = fields['edges'].scoped_children.values.first['node']&.scoped_children&.values&.first
+      end
+      return if fields.blank?
+
       fields.each_with_object({}) do |(k, v), h|
-        h[k] = v.scoped_children == {} ? nil : fields_to_hash(v.scoped_children.values.first)
+        h[k] = v.scoped_children == {} ? nil : parse_fields(v)
       end
     end
 

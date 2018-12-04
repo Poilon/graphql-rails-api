@@ -7,14 +7,13 @@ class GraphqlAllConnectionsGenerator < Rails::Generators::NamedBase
     end
   end
 
-  private
-
   def generate_connection(dir, resource)
     File.write(
       "#{dir}/connection.rb",
       <<~STRING
         #{resource.pluralize.camelize}::Connection = #{resource.pluralize.camelize}::Type.define_connection do
           name '#{resource.camelize}Connection'
+
           field :total_count, types.Int do
             resolve ->(obj, _, _) { obj.nodes.count }
           end

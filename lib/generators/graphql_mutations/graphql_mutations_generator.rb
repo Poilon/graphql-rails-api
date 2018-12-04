@@ -8,9 +8,43 @@ class GraphqlMutationsGenerator < Rails::Generators::NamedBase
     generate_create_mutation(dir, resource)
     generate_update_mutation(dir, resource)
     generate_destroy_mutation(dir, resource)
+    generate_bulk_create_mutation(dir, resource)
+    generate_bulk_update_mutation(dir, resource)
   end
 
   private
+
+  def generate_bulk_create_mutation(dir, resource)
+    File.write(
+      "#{dir}/bulk_create.rb",
+      <<~STRING
+        #{resource_class(resource)}::Mutations::BulkCreate = GraphQL::Field.define do
+          description 'creates some #{resource_class(resource).pluralize}'
+          type types[#{resource_class(resource)}::Type]
+
+          argument :#{resource}, types[#{resource_class(resource)}::Mutations::InputType]
+
+          resolve ApplicationService.call(:#{resource}, :bulk_create)
+        end
+      STRING
+    )
+  end
+
+  def generate_bulk_update_mutation(dir, resource)
+    File.write(
+      "#{dir}/bulk_update.rb",
+      <<~STRING
+        #{resource_class(resource)}::Mutations::BulkUpdate = GraphQL::Field.define do
+          description 'Updates some #{resource_class(resource).pluralize}'
+          type types[#{resource_class(resource)}::Type]
+
+          argument :#{resource}, types[#{resource_class(resource)}::Mutations::InputType]
+
+          resolve ApplicationService.call(:#{resource}, :bulk_update)
+        end
+      STRING
+    )
+  end
 
   def generate_create_mutation(dir, resource)
     File.write(

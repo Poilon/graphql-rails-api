@@ -27,17 +27,4 @@ class GraphqlBulkUpdateMutationsGenerator < Rails::Generators::NamedBase
     resource.pluralize.camelize
   end
 
-  def write_at(file_name, line, data)
-    open(file_name, 'r+') do |f|
-      while (line -= 1).positive?
-        f.readline
-      end
-      pos = f.pos
-      rest = f.read
-      f.seek pos
-      f.write data
-      f.write rest
-    end
-  end
-
 end
