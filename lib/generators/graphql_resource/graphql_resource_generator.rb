@@ -32,7 +32,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     generate_graphql_type(@resource) if options.graphql_type?
 
     # Graphql Connection
-    generate_graphql_connection(resource) if options.connection?
+    generate_graphql_connection(@resource) if options.connection?
 
     # Model
     generate_model(@resource) if options.model?

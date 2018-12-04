@@ -51,6 +51,7 @@ module GraphqlRailsApi
         'app/models/application_record.rb',
         lines_count,
         <<-STRING
+
   def self.visible_for(*)
     all
   end
