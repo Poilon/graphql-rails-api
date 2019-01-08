@@ -66,6 +66,7 @@ module Graphql
 
       hash.each_with_object([]) do |(k, v), arr|
         next arr << k if parent_class.new.attributes.key?(k)
+        next arr << v if parent_class.new.attributes.key?(v)
 
         klass = evaluate_model(parent_class, k)
         @models << klass.to_s unless @models.include?(klass.to_s)
@@ -111,7 +112,7 @@ module Graphql
       return if fields.blank?
 
       fields.each_with_object({}) do |(k, v), h|
-        h[k] = v.scoped_children == {} ? nil : parse_fields(v)
+        h[k] = v.scoped_children == {} ? v.definition.name : parse_fields(v)
       end
     end
 
