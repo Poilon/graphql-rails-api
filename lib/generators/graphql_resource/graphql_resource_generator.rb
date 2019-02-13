@@ -95,7 +95,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
       <<~STRING
         class Create#{resource.camelize} < ActiveRecord::Migration[5.2]
           def change
-            create_table :#{resource.pluralize}, #{'id: :uuid ' if Graphql::Rails::Api::Config.instance.id_type == :uuid}do |t|
+            create_table :#{resource.pluralize}, id: :uuid do |t|
               #{fields}
               t.timestamps
             end

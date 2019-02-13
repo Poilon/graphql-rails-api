@@ -1,16 +1,15 @@
-require 'deep_pluck'
+require 'deep_pluck_with_authorization'
 require 'rkelly'
 
 module Graphql
   class HydrateQuery
 
-    def initialize(model, context, order_by: nil, filter: nil, check_visibility: true, id: nil, user: nil)
+    def initialize(model, context, order_by: nil, filter: nil, id: nil, user: nil)
       @context = context
       @filter = filter
       @order_by = order_by
       @model = model
       @models = [model_name.singularize.camelize]
-      @check_visibility = check_visibility
       @id = id
       @user = user
     end
@@ -19,7 +18,9 @@ module Graphql
       @model = @model.where(transform_filter(@filter)) if @filter
       @model = @model.order(@order_by) if @order_by
       @model = @model.where(id: @id) if @id
-      plucked = @model.deep_pluck(*hash_to_array_of_hashes(parse_fields(@context&.irep_node), @model))
+      plucked = DeepPluck::Model.new(@model.visible_for(user: @user), user: @user).add(
+        hash_to_array_of_hashes(parse_fields(@context&.irep_node), @model)
+      ).load_all
       result = plucked_attr_to_structs(plucked, model_name.singularize.camelize.constantize)&.compact
       @id ? result.first : result
     end
@@ -35,24 +36,14 @@ module Graphql
     end
 
     def hash_to_struct(hash, parent_model)
-      return if @check_visibility && !visibility_hash[parent_model]&.include?(hash['id'])
-
       hash.each_with_object(OpenStruct.new) do |(k, v), struct|
         m = evaluate_model(parent_model, k)
+
         next struct[k.to_sym] = plucked_attr_to_structs(v, m) if v.is_a?(Array) && m
 
         next struct[k.to_sym] = hash_to_struct(v, m) if v.is_a?(Hash) && m
 
         struct[k.to_sym] = v
-      end
-    end
-
-    def visibility_hash
-      @visibility_hash ||= @models.reject(&:blank?).each_with_object({}) do |model, hash|
-        visible_ids = model.constantize.visible_for(user: @user)&.pluck(:id)
-        next if visible_ids.blank?
-
-        hash[model.constantize] = visible_ids
       end
     end
 
