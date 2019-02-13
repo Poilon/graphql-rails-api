@@ -8,7 +8,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   end
 
   TYPES_MAPPING = {
-    'id' => 'types.ID',
+    'id' => 'types.String',
     'uuid' => 'types.String',
     'boolean' => 'types.Boolean',
     'float' => 'types.Float',
@@ -55,13 +55,8 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   end
 
   def parse_args
-    if Graphql::Rails::Api::Config.instance.id_type == :uuid
-      @id_db_type = 'uuid'
-      @id_type = 'types.String'
-    else
-      @id_db_type = 'integer'
-      @id_type = 'types.ID'
-    end
+    @id_db_type = 'uuid'
+    @id_type = 'types.String'
 
     @resource = file_name.singularize
     @has_many = []

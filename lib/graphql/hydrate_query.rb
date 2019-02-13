@@ -25,8 +25,9 @@ module Graphql
     end
 
     def transform_filter(filter)
-      parsed_filter = RKelly::Parser.new.parse(filter).to_ecma
-      parsed_filter.gsub('||', 'OR').gsub('&&', 'AND').gsub('===', '=').gsub('==', '=').delete(';')
+      parsed_filter = RKelly::Parser.new.parse(filter.gsub('like', ' | ')).to_ecma
+      parsed_filter.gsub(' | ', ' like ').
+        gsub('||', 'OR').gsub('&&', 'AND').gsub('===', '=').gsub('==', '=').delete(';')
     end
 
     def plucked_attr_to_structs(arr, parent_model)
@@ -34,10 +35,7 @@ module Graphql
     end
 
     def hash_to_struct(hash, parent_model)
-      if @check_visibility &&
-          (visibility_hash[parent_model].blank? || !visibility_hash[parent_model].include?(hash['id']))
-        return
-      end
+      return if @check_visibility && !visibility_hash[parent_model]&.include?(hash['id'])
 
       hash.each_with_object(OpenStruct.new) do |(k, v), struct|
         m = evaluate_model(parent_model, k)
@@ -95,8 +93,11 @@ module Graphql
     end
 
     def evaluate_model(parent, child)
-      child_class_name = child.to_s.singularize.camelize
+      return unless parent.reflect_on_association(child)
+
+      child_class_name = parent.reflect_on_association(child).class_name
       parent_class_name = parent.to_s.singularize.camelize
+
       return child_class_name.constantize if activerecord_model?(child_class_name)
 
       return unless activerecord_model?(parent_class_name)

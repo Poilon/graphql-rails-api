@@ -4,7 +4,6 @@ module Graphql
       class Config
 
         include Singleton
-        attr_accessor :id_type
 
         def self.query_resources
           Dir.glob("#{File.expand_path('.')}/app/graphql/*/type.rb").map do |dir|

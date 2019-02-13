@@ -4,41 +4,49 @@ module GraphqlRailsApi
   class InstallGenerator < Rails::Generators::Base
 
     class_option('apollo_compatibility', type: :boolean, default: true)
-    class_option('action_cable_subs', type: :boolean, default: true)
-    class_option('pg_uuid', type: :boolean, default: true)
     class_option('generate_graphql_route', type: :boolean, default: true)
 
     def generate_files
       @app_name = File.basename(Rails.root.to_s).underscore
       system('mkdir -p app/graphql/')
 
+      write_uuid_extensions_migration if options.pg_uuid?
+
       write_service
-      write_application_record_methods
       write_schema
       write_query_type
       write_mutation_type
-      write_subscription_type
+
       write_controller
-      if options.action_cable_subs?
-        write_websocket_connection
-        write_online_users_channel
-      end
+
+      write_websocket_models
+      write_websocket_connection
+      write_subscriptions_channel
+
+      write_application_record_methods
       write_initializer
       write_require_application_rb
       write_route if options.generate_graphql_route?
-      write_uuid_extensions_migration if options.pg_uuid?
     end
 
     private
 
+    def write_websocket_models
+      system 'rails g graphql_resource websocket_connection belongs_to:user connection_identifier:string'
+      system 'rails g graphql_resource subscribed_query belongs_to:websocket_connection result_hash:string query:string'
+    end
+
     def write_route
       route_file = File.read('config/routes.rb')
       return if route_file.include?('graphql')
+
       File.write(
         'config/routes.rb',
         route_file.gsub(
           "Rails.application.routes.draw do\n",
-          "Rails.application.routes.draw do\n  post '/graphql', to: 'graphql#execute'\n"
+          "Rails.application.routes.draw do\n" \
+          "  post '/graphql', to: 'graphql#execute'\n" \
+          "  mount ActionCable.server => '/cable'\n"
         )
       )
     end
@@ -50,7 +58,7 @@ module GraphqlRailsApi
       write_at(
         'app/models/application_record.rb',
         lines_count,
-        <<-STRING
+        <<~STRING
 
   def self.visible_for(*)
     all
@@ -60,43 +68,21 @@ module GraphqlRailsApi
     all
   end
 
-        STRING
-      )
-      return unless options.action_cable_subs?
+  after_commit :broadcast_queries
 
-      lines_count = File.read('app/models/application_record.rb').lines.count
-      write_at(
-        'app/models/application_record.rb',
-        lines_count,
-        <<-STRING
-  after_commit :notify_online_users
+  def broadcast_queries
+    return if self.class == WebsocketConnection || self.class == SubscribedQuery
 
-  def notify_online_users
-    Redis.current.keys('#{Rails.application.class.parent_name.underscore}_subscribed_query_*').each_with_object({}) do |key, hash|
-      hash[
-        key.gsub('#{Rails.application.class.parent_name.underscore}_subscribed_query_', '')
-      ] = Redis.current.hgetall(key).each_with_object([]) do |(data, vars), array|
-        data = data.split('/////')
-        array << { query: data[0], store: data[1], variables: vars.blank? ? nil : JSON.parse(vars), scope: data[2] }
+    WebsocketConnection.all.each do |wsc|
+      wsc.subscribed_queries.each do |sq|
+        result = {@app_name.camelize}Schema.execute(sq.query, context: { current_user: wsc.user })
+        hex = Digest::SHA1.hexdigest(result.to_s)
+        next if sq.result_hash == hex
+
+        sq.update_attributes(result_hash: hex)
+        SubscriptionsChannel.broadcast_to(wsc, query: sq.query, result: result.to_s)
       end
-    end.each do |user_id, user_queries_array|
-      user_queries_array.map { |user_hash| notify_user(user_id, user_hash) }
     end
-  end
-
-  def notify_user(user_id, user_hash)
-    model_name = self.class.to_s.underscore
-    if !user_hash[:query].include?(model_name.singularize + '(id: $id') &&
-        !user_hash[:query].include?(' ' + model_name.pluralize)
-      return
-    end
-    return if user_hash[:query].include?(model_name + '(id: $id') && user_hash[:variables]['id'] != id
-
-    u = User.find_by(id: user_id)
-    return unless u
-
-    result = #{Rails.application.class.parent_name}ApiSchema.execute(user_hash[:query], context: { current_user: u }, variables: user_hash[:variables])
-    OnlineUsersChannel.broadcast_to(u, store: user_hash[:store], scope: user_hash[:scope], result: result['data'])
   end
 
         STRING
@@ -104,11 +90,7 @@ module GraphqlRailsApi
     end
 
     def write_require_application_rb
-      write_at(
-        'config/application.rb',
-        5,
-        "require 'graphql/hydrate_query'\n"
-      )
+      write_at('config/application.rb', 5, "require 'graphql/hydrate_query'\nrequire 'rkelly'\n")
     end
 
     def write_uuid_extensions_migration
@@ -117,7 +99,7 @@ module GraphqlRailsApi
       File.write(
         migration_file,
         <<~STRING
-          class UuidPgExtensions < ActiveRecord::Migration[5.1]
+          class UuidPgExtensions < ActiveRecord::Migration[5.2]
 
             def change
               execute 'CREATE EXTENSION "pgcrypto" SCHEMA pg_catalog;'
@@ -136,8 +118,6 @@ module GraphqlRailsApi
           require 'graphql/rails/api/config'
 
           config = Graphql::Rails::Api::Config.instance
-
-          config.id_type = #{options.pg_uuid? ? ':uuid' : ':id'} # :id or :uuid
         STRING
       )
     end
@@ -149,11 +129,13 @@ module GraphqlRailsApi
           module ApplicationCable
             class Connection < ActionCable::Connection::Base
 
-              identified_by :current_user
+              identified_by :websocket_connection
 
               def connect
                 # Check authentication, and define current user
-                self.current_user = nil
+                self.websocket_connection = WebsocketConnection.create(
+                  # user_id: current_user.id
+                )
               end
 
             end
@@ -162,40 +144,39 @@ module GraphqlRailsApi
       )
     end
 
-    def write_online_users_channel
+    def write_subscriptions_channel
       File.write(
-        'app/channels/online_users_channel.rb',
+        'app/channels/subscriptions_channel.rb',
         <<~STRING
-          class OnlineUsersChannel < ApplicationCable::Channel
+          class SubscriptionsChannel < ApplicationCable::Channel
 
             def subscribed
-              stream_for(current_user)
-              Redis.current.hset('#{Rails.application.class.parent_name.underscore}_online_users', current_user.id, '1')
-              User.online.each do |user|
-                OnlineUsersChannel.broadcast_to(user, User.online_user_ids)
+              stream_for(websocket_connection)
+              websocket_connection.update_attributes(connection_identifier: connection.connection_identifier)
+              ci = ActionCable.server.connections.map(&:connection_identifier)
+              WebsocketConnection.all.each do |wsc|
+                wsc.destroy unless ci.include?(wsc.connection_identifier)
               end
             end
 
             def subscribe_to_query(data)
-              Redis.current.hset(
-                '#{Rails.application.class.parent_name.underscore}_subscribed_query_' + current_user.id,
-                data['query'] + '/////' + data['store'] + '/////' + data['scope'],
-                data['variables']
+              websocket_connection.subscribed_queries.find_or_create_by(query: data['query'])
+              SubscriptionsChannel.broadcast_to(
+                websocket_connection,
+                query: data['query'],
+                result: {@app_name.camelize}Schema.execute(data['query'], context: { current_user: websocket_connection.user })
               )
             end
 
             def unsubscribe_to_query(data)
-              Redis.current.hdel(
-                '#{Rails.application.class.parent_name.underscore}_subscribed_query_' + current_user.id,
-                data['query'] + '/////' + data['store']
-              )
+              websocket_connection.subscribed_queries.find_by(query: data['query'])&.destroy
             end
 
             def unsubscribed
-              Redis.current.hset('#{Rails.application.class.parent_name.underscore}_online_users', current_user.id, '0')
-              Redis.current.hdel('#{Rails.application.class.parent_name.underscore}_subscribed_query_' + current_user.id, current_user.id)
-              User.online.each do |user|
-                OnlineUsersChannel.broadcast_to(user, User.online_user_ids)
+              websocket_connection.destroy
+              ci = ActionCable.server.connections.map(&:connection_identifier)
+              WebsocketConnection.all.each do |wsc|
+                wsc.destroy unless ci.include?(wsc.connection_identifier)
               end
             end
 
@@ -226,9 +207,6 @@ module GraphqlRailsApi
 
             def authenticated_user
               # Here you need to authenticate the user.
-              # You can use devise, then just write:
-
-              # current_user
             end
 
             # Handle form data, JSON body, or a blank value
@@ -245,17 +223,6 @@ module GraphqlRailsApi
               end
             end
 
-          end
-        STRING
-      )
-    end
-
-    def write_subscription_type
-      File.write(
-        'app/graphql/subscription_type.rb',
-        <<~STRING
-          SubscriptionType = GraphQL::ObjectType.define do
-            name 'Subscription'
           end
         STRING
       )
@@ -291,20 +258,25 @@ module GraphqlRailsApi
 
             Graphql::Rails::Api::Config.query_resources.each do |resource|
               field resource.singularize do
-                description "Return a #{resource.classify}"
+                description "Returns a #{resource.classify}"
                 type !"#{resource.camelize}::Type".constantize
                 argument :id, !types.String
                 resolve ApplicationService.call(resource, :show)
               end
 
               field resource.pluralize do
-                description "Return a #{resource.classify}"
+                description "Returns a #{resource.classify}"
                 type !types[!"#{resource.camelize}::Type".constantize]
                 argument :page, types.Int
                 argument :per_page, types.Int
                 resolve ApplicationService.call(resource, :index)
               end
 
+            end
+
+            field :me, Users::Type do
+              description 'Returns the current user'
+              resolve ->(_, _, ctx) { ctx[:current_user] }
             end
 
           end
@@ -352,8 +324,6 @@ module GraphqlRailsApi
             mutation(MutationType)
             query(QueryType)
             #{'directives [ConnectionDirective, ClientDirective]' if options.apollo_compatibility?}
-            #{'use GraphQL::Subscriptions::ActionCableSubscriptions' if options.action_cable_subs?}
-            subscription(SubscriptionType)
             type_error lambda { |err, query_ctx|
               #{error_handler}
             }
@@ -389,76 +359,85 @@ module GraphqlRailsApi
             end
 
             def index
-              HydrateQuery.new(
+              Graphq::HydrateQuery.new(
                 model.all,
                 @context,
                 order_by: params[:order_by],
                 filter: params[:filter],
                 user: user
-              ).run
+              ).run.compact
             end
 
             def show
-              return not_allowed if access_not_allowed
+              object = Graphq::HydrateQuery.new(model.all, @context, user: user, id: params[:id]).run
+              return not_allowed if object.blank?
 
-              showed_resource = HydrateQuery.new(model.all, @context, user: user, id: object.id).run
-
-              return not_allowed if showed_resource.blank?
-
-              showed_resource
+              object
             end
 
             def create
-              if user&.action?("can_create_#{singular_resource}")
-                created_resource = model.new(params.select { |p| model.new.respond_to?(p) })
-                return not_allowed if not_allowed_to_create_resource(created_resource)
-
-                created_resource.save ? created_resource : graphql_error(created_resource.errors.full_messages.join(', '))
-              elsif user&.action?("can_create_#{singular_resource}_with_verif")
-                Verification.create(action: 'create', model: model.to_s, params: params, user_id: user.id)
-                graphql_error("Pending verification for a #{singular_resource} creation")
+              object = model.new(params.select { |p| model.new.respond_to?(p) })
+              return not_allowed if not_allowed_to_create_resource(object)
+              if object.save
+                object
               else
-                not_allowed
+                graphql_error(object.errors.full_messages.join(', '))
               end
+            end
+
+            def bulk_create
+              result = model.import(params.map { |p| p.select { |param| model.new.respond_to?(param) } })
+              result.each { |e| e.run_callbacks(:save) }
+              hyd = Graphq::HydrateQuery.new(model.where(id: result.ids), @context).run.compact + result.failed_instances.map do |i|
+                graphql_error(i.errors.full_messages)
+              end
+              return hyd.first if hyd.all? { |e| e.is_a?(GraphQL::ExecutionError) }
+
+              hyd
+            end
+
+            def bulk_update
+              visible_ids = model.where(id: params.map { |p| p[:id] }).pluck(:id)
+              return not_allowed if (model.visible_for(user: user).pluck(:id) & visible_ids).size < visible_ids.size
+
+              hash = params.each_with_object({}) { |p, h| h[p.delete(:id)] = p }
+              failed_instances = []
+              result = model.update(hash.keys, hash.values).map { |e| e.errors.blank? ? e : (failed_instances << e && nil) }
+              hyd = Graphq::HydrateQuery.new(model.where(id: result.compact.map(&:id)), @context).run.compact + failed_instances.map do |i|
+                graphql_error(i.errors.full_messages)
+              end
+              hyd.all? { |e| e.is_a?(GraphQL::ExecutionError) } ? hyd.first : hyd
             end
 
             def update
               return not_allowed if write_not_allowed
 
-              if user.action?("can_update_#{singular_resource}")
-                object.update_attributes(params) ? object : graphql_error(object.errors.full_messages.join(', '))
-              elsif user.action?("can_update_#{singular_resource}_with_verif")
-                create_update_verification
+              if object.update_attributes(params)
+                object
               else
-                not_allowed
+                graphql_error(object.errors.full_messages.join(', '))
               end
             end
 
             def destroy
-              return not_allowed if write_not_allowed || !user.action?("can_delete_#{singular_resource}")
+              object = model.find_by(id: params[:id])
+              return not_allowed if write_not_allowed
 
-              object.destroy ? object : graphql_error(object.errors.full_messages.join(', '))
+              if object.destroy
+                object
+              else
+                graphql_error(object.errors.full_messages.join(', '))
+              end
             end
 
             private
 
-            def create_update_verification
-              Verification.create(
-                action: 'update', model: model.to_s, params: params.merge(id: object.id), user_id: user.id
-              )
-              graphql_error("Pending verification for a #{singular_resource} update")
-            end
-
             def write_not_allowed
-              return true unless object
-
-              !model.writable_for(user: user).pluck(:id).include?(object.id)
+              !model.visible_for(user: user).include?(object) if object
             end
 
             def access_not_allowed
-              return true unless object
-
-              !model.visible_for(user: user).pluck(:id).include?(object.id)
+              !model.visible_for(user: user).include?(object) if object
             end
 
             def not_allowed
@@ -497,9 +476,13 @@ module GraphqlRailsApi
 
           end
 
-
         STRING
       )
+    end
+
+
+    def append(file_name)
+
     end
 
     def write_at(file_name, line, data)
