@@ -10,7 +10,7 @@ module GraphqlRailsApi
       @app_name = File.basename(Rails.root.to_s).underscore
       system('mkdir -p app/graphql/')
 
-      write_uuid_extensions_migration if options.pg_uuid?
+      write_uuid_extensions_migration
 
       write_service
       write_schema
@@ -32,6 +32,7 @@ module GraphqlRailsApi
     private
 
     def write_websocket_models
+      system 'rails g graphql_resource user first_name:string last_name:string email:string'
       system 'rails g graphql_resource websocket_connection belongs_to:user connection_identifier:string'
       system 'rails g graphql_resource subscribed_query belongs_to:websocket_connection result_hash:string query:string'
     end
@@ -58,7 +59,7 @@ module GraphqlRailsApi
       write_at(
         'app/models/application_record.rb',
         lines_count,
-        <<~STRING
+        <<-STRING
 
   def self.visible_for(*)
     all
@@ -68,14 +69,10 @@ module GraphqlRailsApi
     all
   end
 
-  after_commit :broadcast_queries
-
-  def broadcast_queries
-    return if self.class == WebsocketConnection || self.class == SubscribedQuery
-
+  def self.broadcast_queries
     WebsocketConnection.all.each do |wsc|
       wsc.subscribed_queries.each do |sq|
-        result = {@app_name.camelize}Schema.execute(sq.query, context: { current_user: wsc.user })
+        result = #{@app_name.camelize}Schema.execute(sq.query, context: { current_user: wsc.user })
         hex = Digest::SHA1.hexdigest(result.to_s)
         next if sq.result_hash == hex
 
@@ -164,7 +161,7 @@ module GraphqlRailsApi
               SubscriptionsChannel.broadcast_to(
                 websocket_connection,
                 query: data['query'],
-                result: {@app_name.camelize}Schema.execute(data['query'], context: { current_user: websocket_connection.user })
+                result: #{@app_name.camelize}Schema.execute(data['query'], context: { current_user: websocket_connection.user })
               )
             end
 
@@ -200,6 +197,7 @@ module GraphqlRailsApi
                 context: { current_user: authenticated_user },
                 operation_name: params[:operationName]
               )
+              ApplicationRecord.broadcast_queries
               render json: result
             end
 
@@ -359,7 +357,7 @@ module GraphqlRailsApi
             end
 
             def index
-              Graphq::HydrateQuery.new(
+              Graphql::HydrateQuery.new(
                 model.all,
                 @context,
                 order_by: params[:order_by],
@@ -369,7 +367,7 @@ module GraphqlRailsApi
             end
 
             def show
-              object = Graphq::HydrateQuery.new(model.all, @context, user: user, id: params[:id]).run
+              object = Graphql::HydrateQuery.new(model.all, @context, user: user, id: params[:id]).run
               return not_allowed if object.blank?
 
               object
@@ -378,6 +376,7 @@ module GraphqlRailsApi
             def create
               object = model.new(params.select { |p| model.new.respond_to?(p) })
               return not_allowed if not_allowed_to_create_resource(object)
+
               if object.save
                 object
               else
@@ -388,7 +387,7 @@ module GraphqlRailsApi
             def bulk_create
               result = model.import(params.map { |p| p.select { |param| model.new.respond_to?(param) } })
               result.each { |e| e.run_callbacks(:save) }
-              hyd = Graphq::HydrateQuery.new(model.where(id: result.ids), @context).run.compact + result.failed_instances.map do |i|
+              hyd = Graphql::HydrateQuery.new(model.where(id: result.ids), @context).run.compact + result.failed_instances.map do |i|
                 graphql_error(i.errors.full_messages)
               end
               return hyd.first if hyd.all? { |e| e.is_a?(GraphQL::ExecutionError) }
@@ -403,7 +402,7 @@ module GraphqlRailsApi
               hash = params.each_with_object({}) { |p, h| h[p.delete(:id)] = p }
               failed_instances = []
               result = model.update(hash.keys, hash.values).map { |e| e.errors.blank? ? e : (failed_instances << e && nil) }
-              hyd = Graphq::HydrateQuery.new(model.where(id: result.compact.map(&:id)), @context).run.compact + failed_instances.map do |i|
+              hyd = Graphql::HydrateQuery.new(model.where(id: result.compact.map(&:id)), @context).run.compact + failed_instances.map do |i|
                 graphql_error(i.errors.full_messages)
               end
               hyd.all? { |e| e.is_a?(GraphQL::ExecutionError) } ? hyd.first : hyd

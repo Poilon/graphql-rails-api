@@ -1,4 +1,4 @@
-require 'deep_pluck_with_authorization'
+require 'deep_pluck'
 require 'rkelly'
 
 module Graphql

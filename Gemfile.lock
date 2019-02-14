@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    graphql-rails-api (0.6.0)
+    graphql-rails-api (0.7.0)
       deep_pluck_with_authorization (~> 1.1.2)
       graphql (~> 1.7)
       rails (~> 5.2, >= 5.2.0)
@@ -61,7 +61,7 @@ GEM
     erubi (1.8.0)
     globalid (0.4.2)
       activesupport (>= 4.2.0)
-    graphql (1.8.14)
+    graphql (1.9.1)
     i18n (1.5.3)
       concurrent-ruby (~> 1.0)
     loofah (2.2.3)
