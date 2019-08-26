@@ -109,17 +109,17 @@ class GraphqlAddFieldsGenerator < Rails::Generators::NamedBase
   def add_has_many_fields_to_type(field, resource)
     file_name = "app/graphql/#{field.pluralize}/type.rb"
     if File.read(file_name).include?("field :#{resource.singularize}_ids") ||
-        File.read(file_name).include?("field :#{resource.pluralize}") ||
-        File.read(file_name).include?("connection :#{resource.pluralize}_connection")
+        File.read(file_name).include?("field :#{resource.pluralize}")
       return
     end
 
     write_at(
       file_name, 4,
       <<-STRING
-  field :#{resource.singularize}_ids, types[#{@id_type}]
+  field :#{resource.singularize}_ids, types[#{@id_type}] do
+    resolve CollectionIdsResolver
+  end
   field :#{resource.pluralize}, types[#{resource.pluralize.camelize}::Type]
-  connection :#{resource.pluralize}_connection, #{resource.pluralize.camelize}::Connection
         STRING
     )
 

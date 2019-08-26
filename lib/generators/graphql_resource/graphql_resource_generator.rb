@@ -32,7 +32,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     generate_graphql_type(@resource) if options.graphql_type?
 
     # Graphql Connection
-    generate_graphql_connection(@resource) if options.connection?
+    # generate_graphql_connection(@resource) if options.connection?
 
     # Model
     generate_model(@resource) if options.model?
@@ -167,15 +167,15 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
     file_name = "app/graphql/#{field.pluralize}/type.rb"
     if File.read(file_name).include?("field :#{resource.singularize}_ids") ||
         File.read(file_name).include?("field :#{resource.pluralize}") ||
-        File.read(file_name).include?("connection :#{resource.pluralize}_connection")
       return
     end
     write_at(
       file_name, 4,
       <<-STRING
-  field :#{resource.singularize}_ids, types[#{@id_type}]
+  field :#{resource.singularize}_ids, types[#{@id_type}] do
+    resolve CollectionIdsResolver
+  end
   field :#{resource.pluralize}, types[#{resource.pluralize.camelize}::Type]
-  connection :#{resource.pluralize}_connection, #{resource.pluralize.camelize}::Connection
         STRING
     )
 
