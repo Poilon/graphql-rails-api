@@ -4,7 +4,7 @@ require 'rkelly'
 module Graphql
   class HydrateQuery
 
-    def initialize(model, context, order_by: nil, filter: nil, id: nil, user: nil)
+    def initialize(model, context, order_by: nil, filter: nil, id: nil, user: nil, page: nil, per_page: 10)
       @context = context
       @filter = filter
       @order_by = order_by
@@ -12,11 +12,17 @@ module Graphql
       @models = [model_name.singularize.camelize]
       @id = id
       @user = user
+      @page = page
+      @per_page = per_page
     end
 
     def run
       @model = @model.where(transform_filter(@filter)) if @filter
       @model = @model.order(@order_by) if @order_by
+
+      @model = @model.limit(@per_page) if @per_page
+      @model = @model.offset(@per_page * (@page - 1)) if @page
+
       @model = @model.where(id: @id) if @id
       plucked = DeepPluck::Model.new(@model.visible_for(user: @user), user: @user).add(
         hash_to_array_of_hashes(parse_fields(@context&.irep_node), @model)

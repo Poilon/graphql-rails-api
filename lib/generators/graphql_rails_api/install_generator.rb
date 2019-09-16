@@ -267,6 +267,8 @@ module GraphqlRailsApi
                 type !types[!"#{resource.camelize}::Type".constantize]
                 argument :page, types.Int
                 argument :per_page, types.Int
+                argument :filter, types.String
+                argument :order_by, types.String
                 resolve ApplicationService.call(resource, :index)
               end
 
@@ -362,6 +364,8 @@ module GraphqlRailsApi
                 @context,
                 order_by: params[:order_by],
                 filter: params[:filter],
+                per_page: params[:per_page],
+                page: params[:page],
                 user: user
               ).run.compact
             end
@@ -477,11 +481,6 @@ module GraphqlRailsApi
 
         STRING
       )
-    end
-
-
-    def append(file_name)
-
     end
 
     def write_at(file_name, line, data)
