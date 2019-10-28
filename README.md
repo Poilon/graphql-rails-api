@@ -6,8 +6,16 @@ Need any help or wanna talk with me about it on slack ? Don't hesitate,
 https://bit.ly/2KvV8Pk
 
 ## Installation
-Add these lines to your application's Gemfile:
 
+Create a rails app via
+```
+rails new project-name --api --database=postgresql
+cd project-name
+bundle
+rails db:create
+```
+
+Add these lines to your application's Gemfile:
 ```ruby
 gem 'graphql'
 gem 'graphql-rails-api'
