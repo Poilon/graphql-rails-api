@@ -16,6 +16,7 @@ module GraphqlRailsApi
       write_schema
       write_query_type
       write_mutation_type
+      write_collection_ids_resolver
 
       write_controller
 
@@ -49,6 +50,25 @@ module GraphqlRailsApi
           "  post '/graphql', to: 'graphql#execute'\n" \
           "  mount ActionCable.server => '/cable'\n"
         )
+      )
+    end
+
+    def write_collection_ids_resolver
+      File.write(
+        'app/graphql/collection_ids_resolver.rb',
+        <<~STRING
+          class CollectionIdsResolver
+
+            def self.call(obj, _args, ctx)
+              if obj.is_a?(OpenStruct)
+                obj[ctx.field.name.gsub('_ids', '').pluralize]&.map(&:id)
+              else
+                obj.send(ctx.field.name)
+              end
+            end
+
+          end
+        STRING
       )
     end
 
