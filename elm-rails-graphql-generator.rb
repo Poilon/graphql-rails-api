@@ -234,9 +234,7 @@ end
 rails_server = nil
 
 show_and_do('Launch rails server on port 3123...') do
-  rails_server = Thread.new {
-    system('rails s -p 3123 &> /dev/null')
-  }
+  rails_server = Thread.new { system('rails s -p 3123 &> /dev/null') }
 end
 
 show_and_do("Generating #{options[:name]} front in elm...") do
@@ -275,4 +273,3 @@ end
 show_and_do('Stopping rails server on port 3123...') do
   Thread.kill(rails_server)
 end
-
