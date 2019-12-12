@@ -5,6 +5,14 @@ require 'io/console'
 
 options = {}
 
+def show_and_do(str)
+  print str.yellow
+  show_wait_spinner do
+    yield
+  end
+  puts 'Done!'.green
+end
+
 class NilClass
   def blank?
     true
@@ -189,37 +197,29 @@ end
 
 clear_console
 
-print "Generating #{options[:name]} api...".yellow
-show_wait_spinner do
+show_and_do("Generating #{options[:name]} api..") do
   Dir.mkdir options[:name]
   Dir.chdir options[:name]
   system("rails new #{options[:name]}-api --api --database=postgresql &> /dev/null")
 end
-puts 'Done!'.green
-print 'Adding graphql, graphql-rails-api and rack-cors to the Gemfile...'.yellow
-show_wait_spinner do
+
+show_and_do('Adding graphql, graphql-rails-api and rack-cors to the Gemfile...') do
   Dir.chdir options[:name] + '-api'
   system('bundle add graphql --skip-install &> /dev/null')
   system('bundle add graphql-rails-api --skip-install &> /dev/null')
   system('bundle add rack-cors &> /dev/null')
 end
-puts 'Done!'.green
 
-print 'Creating database...'.yellow
-show_wait_spinner do
+show_and_do('Creating database...') do
   system('rails db:create &> /dev/null')
 end
-puts 'Done!'.green
 
-print 'Installing graphql-rails-api...'.yellow
-show_wait_spinner do
+show_and_do('Installing graphql-rails-api...') do
   system('spring stop &> /dev/null')
   system('rails generate graphql_rails_api:install &> /dev/null')
 end
-puts 'Done!'.green
 
-print 'Configuring cors (Cross-Origin-Resource-System)...'.yellow
-show_wait_spinner do
+show_and_do('Configuring cors (Cross-Origin-Resource-System)...') do
   cors_content =
     %(Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
@@ -230,41 +230,31 @@ end)
 
   File.open('config/initializers/cors.rb', 'a+') { |f| f.write(cors_content) }
 end
-puts 'Done!'.green
 
 rails_server = nil
 
-print 'Launch rails server on port 3123...'.yellow
-show_wait_spinner do
+show_and_do('Launch rails server on port 3123...') do
   rails_server = Thread.new {
     system('rails s -p 3123 &> /dev/null')
   }
 end
-puts 'Done!'.green
 
-print "Generating #{options[:name]} front in elm...".yellow
-show_wait_spinner do
+show_and_do("Generating #{options[:name]} front in elm...") do
   Dir.mkdir "../#{options[:name]}-front"
   Dir.chdir "../#{options[:name]}-front"
   system("printf 'y' | elm init &> /dev/null")
 end
-puts 'Done!'.green
 
-print 'Installing dillonkearns/elm-graphql...'.yellow
-show_wait_spinner do
+show_and_do('Installing dillonkearns/elm-graphql...') do
   system("printf 'y' | elm install dillonkearns/elm-graphql &> /dev/null")
   system("printf 'y' | elm install elm/json &> /dev/null")
 end
-puts 'Done!'.green
 
-print 'Installing dillonkearns/elm-graphql CLI...'.yellow
-show_wait_spinner do
+show_and_do('Installing dillonkearns/elm-graphql CLI...') do
   system('npm install --save-dev @dillonkearns/elm-graphql &> /dev/null')
 end
-puts 'Done!'.green
 camelname = camelcase options[:name]
-print 'Configuring package.json...'.yellow
-show_wait_spinner do
+show_and_do('Configuring package.json...') do
   elm_package_content =
     %({
   "name": "#{options[:name]}",
@@ -277,16 +267,12 @@ show_wait_spinner do
 
   File.open('package.json', 'w') { |f| f.write(elm_package_content) }
 end
-puts 'Done!'.green
 
-print 'Generating elm with dillonkearns/elm-graphql...'.yellow
-show_wait_spinner do
+show_and_do('Generating elm with dillonkearns/elm-graphql...') do
   system('npm run rails-graphql-api &> /dev/null')
 end
-puts 'Done!'.green
 
-print 'Stopping rails server on port 3123...'.yellow
-show_wait_spinner do
+show_and_do('Stopping rails server on port 3123...') do
   Thread.kill(rails_server)
 end
-puts 'Done!'.green
+
