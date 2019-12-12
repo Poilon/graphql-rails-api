@@ -35,6 +35,33 @@ class Hash
 end
 
 class String
+  def colorize(color_code)
+    "\e[#{color_code}m#{self}\e[0m"
+  end
+
+  def red
+    colorize(31)
+  end
+
+  def green
+    colorize(32)
+  end
+
+  def yellow
+    colorize(33)
+  end
+
+  def blue
+    colorize(34)
+  end
+
+  def pink
+    colorize(35)
+  end
+
+  def light_blue
+    colorize(36)
+  end
   BLANK_RE = /\A[[:space:]]*\z/
 
   # A string is blank if it's empty or contains whitespaces only:
@@ -102,15 +129,26 @@ def show_wait_spinner(fps=10)
   end
 end
 
-clear_console
+abort = false
 
 OptionParser.new do |parser|
   parser.on('-n', '--name NAME', 'The name of your project') do |name|
     options[:name] = name
   end
+  parser.on('-p', '--path PATH', 'The path of your project') do |path|
+    options[:path] = path
+    Dir.mkdir options[:path] unless Dir.exist?(options[:path])
+  end
 end.parse!
 
-abort = false
+if abort
+  puts '...Aborting generation...'
+  return
+end
+
+clear_console
+
+Dir.chdir options[:path] unless options[:path].blank?
 
 loop do
   if options[:name].blank?
@@ -121,6 +159,7 @@ loop do
   if File.exist?(options[:name])
     clear_console
     puts "The directory #{options[:name]} already exists"
+    print "in #{options[:path]}" unless options[:path].blank?
     options[:name] = nil
     next
   end
@@ -144,35 +183,51 @@ if abort
   return
 end
 
-print 'Generating ' + options[:name] + ' api...'
-show_wait_spinner{
+clear_console
+
+print "Generating #{options[:name]} api...".yellow
+show_wait_spinner {
   Dir.mkdir options[:name]
   Dir.chdir options[:name]
-  system("rails new #{options[:name]}-api --api --database=postgresql --quiet")
+  system("rails new #{options[:name]}-api --api --database=postgresql &> /dev/null")
 }
-puts 'Done!'
+puts 'Done!'.green
+print 'Adding graphql, graphql-rails-api and rack-cors to the Gemfile...'.yellow
+show_wait_spinner {
+  Dir.chdir options[:name] + '-api'
+  system('bundle add graphql --skip-install &> /dev/null')
+  system('bundle add graphql-rails-api --skip-install &> /dev/null')
+  system('bundle add rack-cors &> /dev/null')
+}
+puts 'Done!'.green
 
-# cd project-name-api
+print 'Creating database...'.yellow
+show_wait_spinner {
+  system('rails db:create &> /dev/null')
+}
+puts 'Done!'.green
 
-# bundle add graphql --skip-install
-# bundle add graphql-rails-api --skip-install
-# bundle add rack-cors
+print 'Installing graphql-rails-api...'.yellow
+show_wait_spinner {
+  system('spring stop &> /dev/null')
+  system('rails generate graphql_rails_api:install &> /dev/null')
+}
+puts 'Done!'.green
 
-# rails db:create
+print 'Configuring cors (Cross-Origin-Resource-System)...'.yellow
+show_wait_spinner {
+  cors_content =
+    %(Rails.application.config.middleware.insert_before 0, Rack::Cors do
+      allow do
+        origins '*'
+        resource '*', headers: :any, methods: %i[get post options]
+      end
+    end
+    )
 
-# spring stop
-
-# rails generate graphql_rails_api:install
-
-# cors_content = %{Rails.application.config.middleware.insert_before 0, Rack::Cors do
-#   allow do
-#     origins '*'
-#     resource '*', headers: :any, methods: %i[get post options]
-#   end
-# end
-# }
-
-# File.open("config/initializers/cors.rb", "a+") { |f| f.write(cors_content) }
+  File.open('config/initializers/cors.rb', 'a+') { |f| f.write(cors_content) }
+}
+puts 'Done!'.green
 
 # rails s -p 3124
 
