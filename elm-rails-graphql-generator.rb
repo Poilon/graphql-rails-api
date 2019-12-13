@@ -109,7 +109,13 @@ end
 show_and_do('Installing dillonkearns/elm-graphql CLI...') do
   system('npm install --save-dev @dillonkearns/elm-graphql &> /dev/null')
 end
+
+show_and_do('Installing dillonkearns/elm-graphql CLI...') do
+  system('npm install --save-dev elm-live@next &> /dev/null')
+end
+
 camelname = camelcase options[:name]
+
 show_and_do('Configuring package.json...') do
   elm_package_content =
     %({
@@ -117,7 +123,8 @@ show_and_do('Configuring package.json...') do
   "version": "1.0.0",
   "scripts": {
     "api": "elm-graphql http://localhost:3000/graphql --base #{camelname}",
-    "rails-graphql-api": "elm-graphql http://localhost:3123/graphql --base #{camelname}"
+    "rails-graphql-api": "elm-graphql http://localhost:3123/graphql --base #{camelname}",
+    "elm-live": "elm-live src/Main.elm --open"
   }
 })
 
