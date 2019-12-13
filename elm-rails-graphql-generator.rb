@@ -5,7 +5,7 @@ require 'io/console'
 require_relative 'wait_for_it'
 require_relative 'utils'
 options = {}
-
+elm_boiler_plate = File.read('boiler_plate.elm')
 abort = false
 
 OptionParser.new do |parser|
@@ -31,7 +31,7 @@ loop do
   if File.exist?(options[:name])
     clear_console
     puts "The directory #{options[:name]} already exists"
-    print "in #{options[:path]}" unless options[:path].blank?
+    puts "in : #{options[:path]}" unless options[:path].blank?
     options[:name] = nil
     next
   end
@@ -79,7 +79,7 @@ show_and_do('Installing graphql-rails-api...') do
   system('rails generate graphql_rails_api:install &> /dev/null')
 end
 
-show_and_do('Configuring cors (Cross-Origin-Resource-System)...') do
+show_and_do('Configuring cors (Cross-Origin Resource Sharing)...') do
   cors_content =
     %(Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
@@ -106,11 +106,16 @@ show_and_do('Installing dillonkearns/elm-graphql...') do
   system("printf 'y' | elm install elm/json &> /dev/null")
 end
 
+show_and_do('Installing elm-athlete/athlete...') do
+  system("printf 'y' | elm install elm-athlete/athlete &> /dev/null")
+  system("printf 'y' | elm install elm/time &> /dev/null")
+end
+
 show_and_do('Installing dillonkearns/elm-graphql CLI...') do
   system('npm install --save-dev @dillonkearns/elm-graphql &> /dev/null')
 end
 
-show_and_do('Installing dillonkearns/elm-graphql CLI...') do
+show_and_do('Installing elm-live CLI...') do
   system('npm install --save-dev elm-live@next &> /dev/null')
 end
 
@@ -124,7 +129,7 @@ show_and_do('Configuring package.json...') do
   "scripts": {
     "api": "elm-graphql http://localhost:3000/graphql --base #{camelname}",
     "rails-graphql-api": "elm-graphql http://localhost:3123/graphql --base #{camelname}",
-    "elm-live": "elm-live src/Main.elm --open"
+    "live": "elm-live src/Main.elm --open"
   }
 })
 
@@ -135,6 +140,16 @@ show_and_do('Generating elm with dillonkearns/elm-graphql...') do
   system('npm run rails-graphql-api &> /dev/null')
 end
 
+show_and_do('Copying boiler_plate.elm...') do
+  File.open('src/Main.elm', 'w') { |f| f.write(elm_boiler_plate) }
+end
+
 show_and_do('Stopping rails server on port 3123...') do
   system("lsof -i :3123 -sTCP:LISTEN | awk 'NR > 1 {print $2}' | xargs kill -9 &> /dev/null")
 end
+
+puts "\nSuccessful installation!".green
+puts 'You can now, run your rails server and front server:'.green
+puts '  rails s'.yellow + " in #{options[:name]}-api".green
+puts '  npm run live'.yellow + " in #{options[:name]}-front".green
+
