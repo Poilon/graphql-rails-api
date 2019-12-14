@@ -17,6 +17,8 @@ import BodyBuilder.Router as Router
         , push
         )
 import BodyBuilder.Style as Style
+import Browser
+import Browser.Navigation as Nav
 import Color
 import Elegant exposing (SizeUnit, percent, pt, px, vh)
 import Elegant.Border as Border
@@ -31,6 +33,7 @@ import Elegant.Padding as Padding
 import Elegant.Typography as Typography
 import Modifiers exposing (..)
 import Time
+import Url
 
 
 find_by : (a -> b) -> b -> List a -> Maybe a
@@ -46,6 +49,8 @@ type Route
 
 type alias Data =
     { blogposts : List Blogpost
+    , key : Nav.Key
+    , url : Url.Url
     }
 
 
@@ -66,6 +71,8 @@ type HistoryMsg
 type Msg
     = HistoryMsgWrapper HistoryMsg
     | StandardHistoryWrapper StandardHistoryMsg
+    | UrlChanged Url.Url
+    | LinkClicked Browser.UrlRequest
 
 
 type alias MarkdownString =
@@ -191,29 +198,77 @@ pageView { blogposts } { route } transition =
             blogpostsShow id blogposts
 
 
-view : Model -> NodeWithStyle Msg
-view ({ history, data } as model) =
-    div
-        [ style
-            [ Style.box
-                [ Box.typography
-                    [ Typography.fontFamilySansSerif
-                    , Typography.size Constants.zeta
+chooseView : Model -> Document Msg
+chooseView model =
+    case model.data.url.path of
+        "/admin" ->
+            adminView model
+
+        _ ->
+            homeView model
+
+
+homeView : Model -> Document Msg
+homeView ({ history, data } as model) =
+    { title = "ProjectTest"
+    , body =
+        div
+            [ style
+                [ Style.box
+                    [ Box.typography
+                        [ Typography.fontFamilySansSerif
+                        , Typography.size Constants.zeta
+                        ]
                     ]
                 ]
             ]
-        ]
-        [ historyView (pageView data) history ]
+            [ historyView (pageView data) history ]
+    }
+
+
+adminView : Model -> Document Msg
+adminView ({ history, data } as model) =
+    { title = "Admin ProjectTest"
+    , body =
+        div
+            [ style
+                [ Style.box
+                    [ Box.typography
+                        [ Typography.fontFamilySansSerif
+                        , Typography.size Constants.zeta
+                        ]
+                    ]
+                ]
+            ]
+            [ text "ADMIN is going to be here :)" ]
+    }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
+    let
+        data =
+            model.data
+    in
     case msg of
         HistoryMsgWrapper historyMsg ->
             ( { model | history = handleHistory historyMsg model.history }, Cmd.none )
 
         StandardHistoryWrapper historyMsg ->
             model |> handleStandardHistory historyMsg
+
+        LinkClicked urlRequest ->
+            case urlRequest of
+                Browser.Internal url ->
+                    ( model, Nav.pushUrl data.key (Url.toString url) )
+
+                Browser.External href ->
+                    ( model, Nav.load href )
+
+        UrlChanged url ->
+            ( { model | data = { data | url = url } }
+            , Cmd.none
+            )
 
 
 subscriptions : Model -> Sub Msg
@@ -238,21 +293,26 @@ initBlogposts =
     ]
 
 
-initData : Data
-initData =
-    { blogposts = initBlogposts }
+initData : () -> Url.Url -> Nav.Key -> Data
+initData flags url key =
+    { blogposts = initBlogposts
+    , key = key
+    , url = url
+    }
 
 
-init : { data : Data, history : MyHistory }
-init =
-    initHistoryAndData BlogpostsIndex initData StandardHistoryWrapper
+init : () -> Url.Url -> Nav.Key -> { data : Data, history : MyHistory }
+init flags url key =
+    initHistoryAndData BlogpostsIndex (initData flags url key) StandardHistoryWrapper
 
 
 main : Program () Model Msg
 main =
-    element
-        { init = \_ -> ( init, Cmd.none )
+    application
+        { init = \flags -> \url -> \key -> ( init flags url key, Cmd.none )
+        , onUrlChange = UrlChanged
+        , onUrlRequest = LinkClicked
         , update = update
         , subscriptions = subscriptions
-        , view = view
+        , view = chooseView
         }

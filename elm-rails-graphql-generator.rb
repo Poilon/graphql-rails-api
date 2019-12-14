@@ -4,6 +4,7 @@ require 'optparse'
 require 'io/console'
 require_relative 'wait_for_it'
 require_relative 'utils'
+require_relative 'elm_graphql_administrator'
 options = {}
 elm_boiler_plate = File.read('boiler_plate.elm')
 abort = false
@@ -109,6 +110,7 @@ end
 show_and_do('Installing elm-athlete/athlete...') do
   system("printf 'y' | elm install elm-athlete/athlete &> /dev/null")
   system("printf 'y' | elm install elm/time &> /dev/null")
+  system("printf 'y' | elm install elm/url &> /dev/null")
 end
 
 show_and_do('Installing dillonkearns/elm-graphql CLI...') do
@@ -129,7 +131,8 @@ show_and_do('Configuring package.json...') do
   "scripts": {
     "api": "elm-graphql http://localhost:3000/graphql --base #{camelname}",
     "rails-graphql-api": "elm-graphql http://localhost:3123/graphql --base #{camelname}",
-    "live": "elm-live src/Main.elm --open"
+    "live": "elm-live src/Main.elm -u --open",
+    "lived": "elm-live src/Main.elm -u --open -- --debug"
   }
 })
 
@@ -138,6 +141,10 @@ end
 
 show_and_do('Generating elm with dillonkearns/elm-graphql...') do
   system('npm run rails-graphql-api &> /dev/null')
+end
+
+show_and_do('Generating admin...') do
+  generate_admin
 end
 
 show_and_do('Copying boiler_plate.elm...') do
