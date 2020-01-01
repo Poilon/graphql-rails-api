@@ -3,7 +3,7 @@ class GraphqlMutationsGenerator < Rails::Generators::NamedBase
   def generate
     resource = file_name.underscore.singularize
     dir = "app/graphql/#{resource.pluralize}/mutations"
-    system("mkdir -p #{dir}")
+    FileUtils.mkdir_p(dir) unless File.directory?(dir)
     generate_create_mutation(dir, resource)
     generate_update_mutation(dir, resource)
     generate_destroy_mutation(dir, resource)
