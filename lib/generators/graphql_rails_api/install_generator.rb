@@ -8,8 +8,10 @@ module GraphqlRailsApi
 
     def generate_files
       @app_name = File.basename(Rails.root.to_s).underscore
-      system('mkdir -p app/graphql/')
-
+      
+      folder = 'app/graphql/'
+      FileUtils.mkdir_p(folder) unless File.directory?(folder)
+       
       write_uuid_extensions_migration
 
       write_service

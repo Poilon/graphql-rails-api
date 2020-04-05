@@ -103,7 +103,7 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   end
 
   def generate_basic_mutations(resource)
-    system("mkdir -p #{@mutations_directory}")
+    FileUtils.mkdir_p(@mutations_directory) unless File.directory?(@mutations_directory)
     system("rails generate graphql_mutations #{resource}")
 
     # Graphql Input Type
@@ -126,7 +126,8 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   end
 
   def generate_graphql_input_type(resource)
-    system("mkdir -p #{@mutations_directory}")
+    FileUtils.mkdir_p(@mutations_directory) unless File.directory?(@mutations_directory)
+
     File.write(
       "#{@mutations_directory}/input_type.rb",
       <<~STRING
@@ -241,6 +242,9 @@ class GraphqlResourceGenerator < Rails::Generators::NamedBase
   end
 
   def generate_service(resource)
+     
+    FileUtils.mkdir_p("app/graphql/#{resource.pluralize}/") unless File.directory?("app/graphql/#{resource.pluralize}/")
+     
     File.write(
       "app/graphql/#{resource.pluralize}/service.rb",
       <<~STRING
@@ -308,13 +312,13 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
   end
 
   def add_to_model(model, line)
-    file_name = "app/models/#{model.underscore.singularize}.rb"
+    file_name = File.join("app","models","#{model.underscore.singularize}.rb")
     return if !File.exist?(file_name) || File.read(file_name).include?(line)
 
-    line_count = `wc -l "#{file_name}"`.strip.split(' ')[0].to_i
-
+    file = open(file_name)
+    line_count = file.readlines.size
     line_nb = 0
-    File.open(file_name).each do |l|
+    file.each do |l|
       line_nb += 1
       break if l.include?('ApplicationRecord')
     end

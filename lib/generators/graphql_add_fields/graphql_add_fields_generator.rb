@@ -245,10 +245,10 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
     file_name = "app/models/#{model.underscore.singularize}.rb"
     return if !File.exist?(file_name) || File.read(file_name).include?(line)
 
-    line_count = `wc -l "#{file_name}"`.strip.split(' ')[0].to_i
-
+    file = open(file_name)
+    line_count = file.readlines.size
     line_nb = 0
-    File.open(file_name).each do |l|
+    file.each do |l|
       line_nb += 1
       break if l.include?('ApplicationRecord')
     end
