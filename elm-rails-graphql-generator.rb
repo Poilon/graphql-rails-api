@@ -1,10 +1,11 @@
-#ruby
-#!/usr/bin/env ruby
+# ruby
+# !/usr/bin/env ruby
 require 'optparse'
 require 'io/console'
 require_relative 'wait_for_it'
 require_relative 'utils'
 require_relative 'elm_graphql_administrator'
+
 options = {}
 elm_boiler_plate = File.read('boiler_plate.elm')
 abort = false
@@ -16,6 +17,18 @@ OptionParser.new do |parser|
   parser.on('-p', '--path PATH', 'The path of your project') do |path|
     options[:path] = path
     Dir.mkdir options[:path] unless Dir.exist?(options[:path])
+  end
+  parser.on('--no-pg-uuid', 'Disables PostgreSQL uuid extension') do
+    options['--no-pg-uuid'] = true
+  end
+  parser.on('--no-action-cable-subs', 'Disables ActionCable websocket subscriptions') do
+    options['--no-action-cable-subs'] = true
+  end
+  parser.on('--no-apollo-compatibility', 'Disables Apollo compatibility') do
+    options['--no-apollo-compatibility'] = true
+  end
+  parser.on('--no-users', 'Runs the script with no user migrations') do
+    options['--no-users'] = true
   end
 end.parse!
 
@@ -61,7 +74,7 @@ clear_console
 show_and_do("Generating #{options[:name]} api..") do
   Dir.mkdir options[:name]
   Dir.chdir options[:name]
-  system("rails new #{options[:name]}-api --api --database=postgresql &> /dev/null")
+  system("rails new #{options[:name]}-api --database=postgresql &> /dev/null")
 end
 
 show_and_do('Adding graphql, graphql-rails-api and rack-cors to the Gemfile...') do
@@ -75,9 +88,18 @@ show_and_do('Creating database...') do
   system('rails db:create &> /dev/null')
 end
 
-show_and_do('Installing graphql-rails-api...') do
+concatened_options = (options['--no-pg-uuid'] ? ' --no-pg-uuid' : '') +
+  (options['--no-action-cable-subs'] ? ' --no-action-cable-subs' : '') +
+  (options['--no-apollo-compatibility'] ? ' --no-apollo-compatibility' : '')
+
+show_and_do("Installing graphql-rails-api#{concatened_options}...") do
   system('spring stop &> /dev/null')
-  system('rails generate graphql_rails_api:install &> /dev/null')
+  system("rails generate graphql_rails_api:install #{concatened_options} &> /dev/null")
+end
+
+show_and_do('Installing Webpacker') do
+  system('spring stop &> /dev/null')
+  system('rails webpacker:install &> /dev/null')
 end
 
 show_and_do('Configuring cors (Cross-Origin Resource Sharing)...') do
@@ -159,4 +181,3 @@ puts "\nSuccessful installation!".green
 puts 'You can now, run your rails server and front server:'.green
 puts '  rails s'.yellow + " in #{options[:name]}-api".green
 puts '  npm run live'.yellow + " in #{options[:name]}-front".green
-

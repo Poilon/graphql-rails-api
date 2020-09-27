@@ -5,12 +5,13 @@ module GraphqlRailsApi
 
     class_option('apollo_compatibility', type: :boolean, default: true)
     class_option('generate_graphql_route', type: :boolean, default: true)
+    class_option('pg_uuid', type: :boolean, default: true)
 
     def generate_files
       @app_name = File.basename(Rails.root.to_s).underscore
       system('mkdir -p app/graphql/')
 
-      write_uuid_extensions_migration
+      write_uuid_extensions_migration if options.pg_uuid
 
       write_service
       write_schema
