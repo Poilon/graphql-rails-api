@@ -94,7 +94,7 @@ GEM
       mini_portile2 (~> 2.4.0)
     pluck_all (2.0.4)
       activesupport (>= 3.0.0)
-    rack (2.0.7)
+    rack (2.0.8)
     rack-test (1.1.0)
       rack (>= 1.0, < 3)
     rails (6.0.1)

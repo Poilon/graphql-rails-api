@@ -9,7 +9,9 @@ module GraphqlRailsApi
 
     def generate_files
       @app_name = File.basename(Rails.root.to_s).underscore
-      system('mkdir -p app/graphql/')
+
+      folder = 'app/graphql/'
+      FileUtils.mkdir_p(folder) unless File.directory?(folder)
 
       write_uuid_extensions_migration if options.pg_uuid
 
@@ -77,11 +79,11 @@ module GraphqlRailsApi
       lines_count = File.read('app/models/application_record.rb').lines.count
 
       return if File.read('app/models/application_record.rb').include?('def self.visible_for')
+
       write_at(
         'app/models/application_record.rb',
         lines_count,
         <<-STRING
-
   def self.visible_for(*)
     all
   end

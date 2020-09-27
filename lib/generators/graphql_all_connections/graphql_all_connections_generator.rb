@@ -8,6 +8,7 @@ class GraphqlAllConnectionsGenerator < Rails::Generators::NamedBase
   end
 
   def generate_connection(dir, resource)
+    FileUtils.mkdir_p(dir) unless File.directory?(dir)
     File.write(
       "#{dir}/connection.rb",
       <<~STRING
