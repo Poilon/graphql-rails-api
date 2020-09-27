@@ -74,7 +74,7 @@ clear_console
 show_and_do("Generating #{options[:name]} api..") do
   Dir.mkdir options[:name]
   Dir.chdir options[:name]
-  system("rails new #{options[:name]}-api --database=postgresql &> /dev/null")
+  system("rails new #{options[:name]}-api --api --database=postgresql &> /dev/null")
 end
 
 show_and_do('Adding graphql, graphql-rails-api and rack-cors to the Gemfile...') do
