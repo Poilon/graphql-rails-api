@@ -12,7 +12,7 @@ class NilClass
     true
   end
 
-  end
+end
 
 class FalseClass
 
@@ -20,7 +20,7 @@ class FalseClass
     true
   end
 
-  end
+end
 class TrueClass
 
   #   true.blank? # => false
@@ -28,14 +28,14 @@ class TrueClass
     false
   end
 
-  end
+end
 class Array
 
   #   [].blank?      # => true
   #   [1,2,3].blank? # => false
   alias blank? empty?
 
-  end
+end
 
 class Hash
 
@@ -43,7 +43,7 @@ class Hash
   #   { key: 'value' }.blank?  # => false
   alias blank? empty?
 
-  end
+end
 
 class String
 
@@ -94,7 +94,7 @@ class String
     empty? || BLANK_RE.match?(self)
   end
 
-  end
+end
 
 def camelcase(str)
   str.split('-').collect(&:capitalize).join

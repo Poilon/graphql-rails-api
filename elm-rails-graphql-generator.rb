@@ -151,8 +151,8 @@ show_and_do('Configuring package.json...') do
   "name": "#{options[:name]}",
   "version": "1.0.0",
   "scripts": {
-    "api": "elm-graphql http://localhost:3000/graphql --base #{camelname}",
-    "rails-graphql-api": "elm-graphql http://localhost:3123/graphql --base #{camelname}",
+    "api": "./node_modules/.bin/elm-graphql http://localhost:3000/graphql --base #{camelname}",
+    "rails-graphql-api": "./node_modules/.bin/elm-graphql http://localhost:3123/graphql --base #{camelname}",
     "live": "elm-live src/Main.elm -u --open",
     "lived": "elm-live src/Main.elm -u --open -- --debug"
   }
