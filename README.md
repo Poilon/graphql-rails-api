@@ -16,7 +16,6 @@ rails db:create
 
 Add these lines to your application's Gemfile:
 ```ruby
-gem 'graphql'
 gem 'graphql-rails-api'
 ```
 
