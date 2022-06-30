@@ -36,7 +36,7 @@ module Graphql
       @model = @model.limit(@per_page)
       @model = @model.offset(@per_page * (@page - 1))
 
-      Rails.logger.info(@model.to_sql)
+      ::Rails.logger.info(@model.to_sql)
       OpenStruct.new(
         data: deep_pluck_to_structs(@context&.irep_node&.typed_children&.values&.first.try(:[], 'data')),
         total_count: @total,
