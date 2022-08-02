@@ -21,4 +21,7 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency 'rails', '~> 7.0.0', '>= 6.1.4'
   s.add_runtime_dependency 'rkelly-remix', '~> 0'
 
+  s.add_development_dependency 'rspec-rails'
+  s.add_development_dependency 'pg'
+
 end
