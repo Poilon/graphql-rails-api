@@ -26,7 +26,7 @@ class ApplicationService
       @context,
       order_by: params[:order_by],
       filter: params[:filter],
-      per_page: params[:per_page] && params[:per_page] > 1000 ? 1000 : params[:per_page],
+      per_page: params[:per_page],
       page: params[:page],
       user: user
     ).run.compact

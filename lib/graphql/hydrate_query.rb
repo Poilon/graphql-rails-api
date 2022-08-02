@@ -20,6 +20,7 @@ module Graphql
       @page = page.present? ? page.to_i : 1
       #@page = page || 1
       #@per_page = per_page.to_i || 1000
+      # params[:per_page] && params[:per_page] > 1000 ? 1000 : params[:per_page]
       @per_page = per_page.present? ? per_page.to_i :  1000
     end
 

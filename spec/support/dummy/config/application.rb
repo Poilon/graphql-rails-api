@@ -21,8 +21,6 @@ Bundler.require(*Rails.groups)
 module Dummy
   class Application < Rails::Application
     # Initialize configuration defaults for originally generated Rails version.
-    # We comment the following since it is to the testing suite
-    # to determine which rails version is used.
     # config.load_defaults 7.0
 
     # Configuration for the application, engines, and railties goes here.

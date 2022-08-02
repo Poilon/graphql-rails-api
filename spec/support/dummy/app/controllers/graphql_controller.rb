@@ -16,7 +16,6 @@ class GraphqlController < ApplicationController
 
   def authenticated_user
     # Here you need to authenticate the user.
-    User.first
   end
 
   # Handle form data, JSON body, or a blank value
