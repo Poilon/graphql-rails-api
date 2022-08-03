@@ -8,11 +8,11 @@ module GraphqlRailsApi
 
     def generate_files
       @app_name = File.basename(Rails.root.to_s).underscore
-      
+
       folder = 'app/graphql/'
       FileUtils.mkdir_p(folder) unless File.directory?(folder)
-       
-      write_uuid_extensions_migration
+
+      # write_uuid_extensions_migration
 
       write_service
       write_schema
@@ -22,9 +22,11 @@ module GraphqlRailsApi
 
       write_controller
 
-      write_websocket_models
-      write_websocket_connection
-      write_subscriptions_channel
+      system 'rails g graphql_resource user first_name:string last_name:string email:string'
+
+      #write_websocket_models
+      #write_websocket_connection
+      #write_subscriptions_channel
 
       write_application_record_methods
       write_initializer
@@ -49,11 +51,11 @@ module GraphqlRailsApi
         route_file.gsub(
           "Rails.application.routes.draw do\n",
           "Rails.application.routes.draw do\n" \
-          "  post '/graphql', to: 'graphql#execute'\n" \
-          "  mount ActionCable.server => '/cable'\n"
+          "  post '/graphql', to: 'graphql#execute'\n"
         )
       )
     end
+    # "  mount ActionCable.server => '/cable'\n"
 
     def write_collection_ids_resolver
       File.write(
@@ -91,22 +93,22 @@ module GraphqlRailsApi
     all
   end
 
-  def self.broadcast_queries
-    WebsocketConnection.all.each do |wsc|
-      wsc.subscribed_queries.each do |sq|
-        result = #{@app_name.camelize}Schema.execute(sq.query, context: { current_user: wsc.user })
-        hex = Digest::SHA1.hexdigest(result.to_s)
-        next if sq.result_hash == hex
 
-        sq.update_attributes(result_hash: hex)
-        SubscriptionsChannel.broadcast_to(wsc, query: sq.query, result: result.to_s)
-      end
-    end
-  end
-
-        STRING
-      )
-    end
+  STRING
+  )
+end
+# def self.broadcast_queries
+#   WebsocketConnection.all.each do |wsc|
+#     wsc.subscribed_queries.each do |sq|
+#       result = #{@app_name.camelize}Schema.execute(sq.query, context: { current_user: wsc.user })
+#       hex = Digest::SHA1.hexdigest(result.to_s)
+#       next if sq.result_hash == hex
+#
+#       sq.update_attributes(result_hash: hex)
+#       SubscriptionsChannel.broadcast_to(wsc, query: sq.query, result: result.to_s)
+#     end
+#   end
+# end
 
     def write_require_application_rb
       write_at('config/application.rb', 5, "require 'graphql/hydrate_query'\nrequire 'rkelly'\n")

@@ -5,6 +5,7 @@ module Graphql
   class HydrateQuery
 
     def initialize(model, context, order_by: nil, filter: nil, check_visibility: true, id: nil, user: nil, page: nil, per_page: nil)
+      ::Rails.logger.error("Context #{context}")
       @context = context
       @filter = filter
       @order_by = order_by
@@ -171,7 +172,7 @@ module Graphql
     end
 
     def transform_filter
-      remove_from_filter=""
+      #remove_from_filter=""
       begin
         ast = RKelly::Parser.new.parse(@filter)
       rescue RKelly::SyntaxError => e
@@ -184,36 +185,40 @@ module Graphql
           raise GraphQL::ExecutionError, "Invalid node type in filter: #{node.class}"
         end
 
+        if node.class == RKelly::Nodes::DotAccessorNode
+          #binding.pry
+        end
         # TODO.
         # if node if an operator node find the left and right value
         # transform enum string to integer
         # transform date string to date
-        if comparaison_operator?(node)
-          left_node = node.left
-          remove_from_filter = "#{node.left.value}."
-          if node.left.accessor.present?
-            accessor = node.left.accessor
-          end
 
-          right_node = node.value
-
-          handle_left_value(left_node.value, accessor)
-          right_node.value = sanitize(right_node.value) if right_node.class == RKelly::Nodes::StringNode
-
-          # handle enum transformation
-          if is_enum_field?(left_node.value)
-            right_node.value = enum_str_to_i(left_node.value, right_node.value)
-          end
-          # verify the corresponding left value is an enum and that the right value is a valid enum value
-          # and check type compatibility
-        end
-
+        #if comparaison_operator?(node)
+        #  left_node = node.left
+        #  #remove_from_filter = "#{node.left.value}."
+        #  #if node.left.accessor.present?
+        #  #  accessor = node.left.accessor
+        #  #end
+#
+        #  right_node = node.value
+#
+        #  handle_left_value(left_node.value, nil)
+        #  right_node.value = sanitize(right_node.value) if right_node.class == RKelly::Nodes::StringNode
+#
+        #  # handle enum transformation
+        #  if is_enum_field?(left_node.value)
+        #    right_node.value = enum_str_to_i(left_node.value, right_node.value)
+        #  end
+        #  # verify the corresponding left value is an enum and that the right value is a valid enum value
+        #  # and check type compatibility
+        #end
+#
         #if node.class == RKelly::Nodes::ResolveNode
         #elsif node.class == RKelly::Nodes::StringNode
 
 
-        # if node.value.is_a?(String)
-        #   ::Rails.logger.info("Node: #{node.class} , #{node.value}")
+        #if node.value.is_a?(String)
+        ::Rails.logger.info("Node: #{node.class} , #{node.value}")
         # end
       end
 
@@ -230,7 +235,7 @@ module Graphql
         '= null': 'IS NULL'
       }
       symbols.each { |k, v| parsed_filter.gsub!(" #{k} ", " #{v} ") }
-      parsed_filter.delete!(remove_from_filter)
+      # parsed_filter.delete!(remove_from_filter)
       @model = @model.where(parsed_filter)
       #delimiters = ['AND', 'OR']
       #operators = [' ilike ', ' like ', '=', 'IS NOT NULL', 'IS NULL', '<', '<=', '>', '>=']

@@ -1,7 +1,7 @@
 # This file is copied to spec/ when you run 'rails generate rspec:install'
 require 'spec_helper'
 require 'factory_bot'
-#require 'rails/all'
+require 'rails/all'
 
 ENV['RAILS_ENV'] ||= 'test'
 #require_relative '../config/environment'
