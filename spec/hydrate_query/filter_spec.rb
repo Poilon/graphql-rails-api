@@ -20,8 +20,8 @@ describe 'Filter empty test' do
       #  user: user
       #).run.compact
 #
-      expect(res["errors"].count).to eq(0)
-      expect(res["data"]["users"].count).to eq(1)
+      expect(res["errors"].nil?).to be_truthy
+      expect(res["data"]["users"].count).to eq(3)
     end
 
     it 'count users' do
