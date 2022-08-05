@@ -1,24 +1,24 @@
 # frozen_string_literal: true
 require "rails_helper"
 
+NOW = DateTime.now
+
+def run_query(query, filter="")
+  DummySchema.execute(
+    query,
+    variables: { filter: filter },
+    context: { current_user: User.first },
+  )
+end
+
+def house_query(filter)
+  res = run_query("query($filter: String) { houses(filter: $filter) { id } }", filter)
+  puts res["errors"] if res["errors"].present?
+  expect(res["errors"].nil?).to be_truthy
+  res["data"]["houses"]
+end
+
 describe "Generating some data, performing a graphql query" do
-  NOW = DateTime.now
-
-  def run_query(query, filter)
-    DummySchema.execute(
-      query,
-      variables: { filter: filter },
-      context: { current_user: User.first },
-    )
-  end
-
-  def house_query(filter)
-    res = run_query("query($filter: String) { houses(filter: $filter) { id } }", filter)
-    puts res["errors"] if res["errors"].present?
-    expect(res["errors"].nil?).to be_truthy
-    res["data"]["houses"]
-  end
-
   let!(:berlin) { create(:city, name: "Berlin") }
   let!(:paris) { create(:city, name: "Paris") }
 
@@ -38,7 +38,7 @@ describe "Generating some data, performing a graphql query" do
   let!(:house10) { create(:house, user: sandy, city: paris, street: "street42", number: 350, price: 1_250_000, energy_grade: "a", principal: false, build_at: NOW + 1.day) }
 
   it "with no filter" do
-    res = DummySchema.execute("query { users { id first_name } }", variables: {}, context: { current_user: User.first })
+    res = run_query("query { users { id first_name } }")
 
     expect(res["errors"].nil?).to be_truthy
     expect(res["data"]["users"].count).to eq(3)
@@ -84,9 +84,8 @@ describe "Generating some data, performing a graphql query" do
   end
 
   it "with a filter on an enum" do
-    # TODO enum
-    #expect(house_query("energy_grade == b").count).to eq(3)
-    #expect(house_query("energy_grade != d").count).to eq(9)
+    expect(house_query("energy_grade == 'b'").count).to eq(3)
+    expect(house_query("energy_grade != 'd'").count).to eq(9)
   end
 
   it "with a filter on a bool" do
@@ -97,6 +96,7 @@ describe "Generating some data, performing a graphql query" do
   it "with a filter on an association string field" do
     # expect(house_query("user.email == 'jason@gmail.com'").count).to eq(6)
     # expect(house_query("user.email == 'jASon@gmail.com'").count).to eq(6)
+    # expect(house_query("user.email === 'jASon@gmail.com'").count).to eq(0)
     # expect(house_query("user.email != 'boby@gmail.com'").count).to eq(7)
   end
 

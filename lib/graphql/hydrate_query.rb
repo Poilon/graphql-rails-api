@@ -113,7 +113,7 @@ module Graphql
     def handle_NotEqualNode(node, model)
       arg = {}
       sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type)
+      val = value_from_node(node.value, sym_type, sym, model)
       arg[sym] = val
       model.where.not(arg)
     end
@@ -121,7 +121,7 @@ module Graphql
     def handle_EqualNode(node, model)
       arg = {}
       sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type)
+      val = value_from_node(node.value, sym_type, sym, model)
       arg[sym] = val
 
       if sym_type == :text || sym_type == :string
@@ -134,7 +134,7 @@ module Graphql
     def handle_StrictEqualNode(node, model)
       arg = {}
       sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type)
+      val = value_from_node(node.value, sym_type, sym, model)
       arg[sym] = val
       if sym_type == :text || sym_type == :string
         model.where("#{sym} LIKE ?", val)
@@ -145,26 +145,26 @@ module Graphql
 
     def handle_GreaterOrEqualNode(node, model)
       sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type)
+      val = value_from_node(node.value, sym_type, sym, model)
       model.where("#{sym} >= ?", val)
     end
 
     def handle_LessOrEqualNode(node, model)
       sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type)
+      val = value_from_node(node.value, sym_type, sym, model)
       model.where("#{sym} <= ?", val)
     end
 
     def handle_LessNode(node, model)
       sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type)
+      val = value_from_node(node.value, sym_type, sym, model)
       model.where("#{sym} < ?", val)
     end
 
     def handle_GreaterNode(node, model)
       arg = {}
       sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type)
+      val = value_from_node(node.value, sym_type, sym, model)
       model.where("#{sym} > ?", val)
     end
 
@@ -205,13 +205,23 @@ module Graphql
       #end
     end
 
-    def value_from_node(node, sym_type)
+    def value_from_node(node, sym_type, sym, model)
       if node.class == RKelly::Nodes::StringNode
         val = node.value.gsub(/^'|'$/, "")
         if sym_type == :datetime
           DateTime.parse(val)
         elsif sym_type == :date
           Date.parse(val)
+        elsif sym_type == :integer
+          # We are about to compare a string with an integer column
+          # If the symbol and the value correspond to an existing enum into the model
+          if model.klass.defined_enums[sym.to_s].present? &&
+             model.klass.defined_enums[sym.to_s].keys.include?(val)
+            # return the corresponding enum value
+            model.klass.defined_enums[sym.to_s][val]
+          else
+            raise GraphQL::ExecutionError, "Invalid value: #{val}, compare a string with an integer column #{sym}"
+          end
         else
           val
         end
