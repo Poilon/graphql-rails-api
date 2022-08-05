@@ -5,7 +5,6 @@ module Graphql
   class HydrateQuery
 
     def initialize(model, context, order_by: nil, filter: nil, check_visibility: true, id: nil, user: nil, page: nil, per_page: nil)
-      ::Rails.logger.error("Context #{context}")
       @context = context
       @filter = filter
       @order_by = order_by
@@ -61,6 +60,180 @@ module Graphql
 
     private
 
+    def transform_filter
+      begin
+        ast = RKelly::Parser.new.parse(@filter)
+      rescue RKelly::SyntaxError => e
+        raise GraphQL::ExecutionError, "Invalid filter: #{e.message}"
+      end
+
+      exprs = ast.value
+      if exprs.count != 1
+        raise GraphQL::ExecutionError, "Invalid filter: #{@node}, one expression allowed"
+      end
+
+      @model = handle_node(exprs.first.value, @model)
+    end
+
+    def handle_node(node, model)
+      if node.class == RKelly::Nodes::ParentheticalNode
+        handle_ParentheticalNode(node, model)
+      elsif node.class == RKelly::Nodes::LogicalAndNode
+        handle_LogicalAndNode(node, model)
+      elsif node.class == RKelly::Nodes::LogicalOrNode
+        handle_LogicalOrNode(node, model)
+      elsif node.class == RKelly::Nodes::NotEqualNode
+        handle_NotEqualNode(node, model)
+      elsif node.class == RKelly::Nodes::EqualNode
+        handle_EqualNode(node, model)
+      elsif node.class == RKelly::Nodes::StrictEqualNode
+        handle_StrictEqualNode(node, model)
+      elsif node.class == RKelly::Nodes::GreaterOrEqualNode
+        handle_GreaterOrEqualNode(node, model)
+      elsif node.class == RKelly::Nodes::LessOrEqualNode
+        handle_LessOrEqualNode(node, model)
+      elsif node.class == RKelly::Nodes::LessNode
+        handle_LessNode(node, model)
+      elsif node.class == RKelly::Nodes::GreaterNode
+        handle_GreaterNode(node, model)
+      else
+        raise GraphQL::ExecutionError, "Invalid filter: #{@node} unknown operator"
+      end
+    end
+
+    def handle_ParentheticalNode(node, model)
+      handle_node(node.value, model)
+    end
+
+    def handle_LogicalAndNode(node, model)
+      handle_node(node.left, model).and(handle_node(node.value, model))
+    end
+
+    def handle_LogicalOrNode(node, model)
+      handle_node(node.left, model).or(handle_node(node.value, model))
+    end
+
+    def handle_NotEqualNode(node, model)
+      arg = {}
+      sym = sym_from_node(node.left)
+      val = value_from_node(node.value)
+      arg[sym] = val
+      model.where.not(arg)
+    end
+
+    def handle_EqualNode(node, model)
+      arg = {}
+      sym = sym_from_node(node.left)
+      val = value_from_node(node.value)
+      arg[sym] = val
+      model.where(arg)
+    end
+
+    def handle_StrictEqualNode(node, model)
+      arg = {}
+      sym = sym_from_node(node.left)
+      val = value_from_node(node.value)
+      arg[sym] = val
+      model.where(arg)
+    end
+
+    def handle_GreaterOrEqualNode(node, model)
+      sym = sym_from_node(node.left)
+      val = value_from_node(node.value)
+      model.where("#{sym.to_s} >= ?", val)
+    end
+
+    def handle_LessOrEqualNode(node, model)
+      sym = sym_from_node(node.left)
+      val = value_from_node(node.value)
+      model.where("#{sym.to_s} <= ?", val)
+    end
+
+    def handle_LessNode(node, model)
+      sym = sym_from_node(node.left)
+      val = value_from_node(node.value)
+      model.where("#{sym.to_s} < ?", val)
+    end
+
+    def handle_GreaterNode(node, model)
+      arg = {}
+      sym = sym_from_node(node.left)
+      val = value_from_node(node.value)
+      model.where("#{sym.to_s} > ?", val)
+    end
+
+    def sym_from_node(node)
+      if node.class == RKelly::Nodes::ResolveNode
+        sym_from_resolve_node(node)
+      elsif node.class == RKelly::Nodes::DotAccessorNode
+        sym_from_dot_accessor_node(node)
+      else
+        raise GraphQL::ExecutionError, "Invalid filter: #{node} unknown left value node"
+      end
+    end
+
+    def sym_from_resolve_node(node)
+      field = node.value
+      if !@model.column_names.include?(field)
+        # verify that the attribute is a valid attribute of @model
+        raise GraphQL::ExecutionError, "Invalid left value: #{field}"
+      end
+      field.to_sym
+    end
+
+    def sym_from_dot_accessor_node(node)
+      # This is a comparaison left value node
+      #if accessor.present?
+      #  # The filter is performed on an associated model attribute (accessor)
+      #  associated_model = lvalue.value.to_sym
+      #  # transform associated model name to class name
+      #  associated_model_class = lvalue.value.camelize.constantize
+      #  unless @model.klass.reflect_on_association(associated_model) &&
+      #    associated_model_class.column_names.include?(accessor)
+      #    raise GraphQL::ExecutionError, "Invalid left value: #{lvalue}"
+      #  end
+#
+      #  # Handle 1 level association performing left join
+      #  @model = @model.left_joins(associated_model)
+      #end
+    end
+
+    def value_from_node(node)
+      if node.class == RKelly::Nodes::StringNode
+        node.value.gsub(/^'|'$/, '')
+      elsif node.class == RKelly::Nodes::NumberNode
+        node.value
+      elsif node.class == RKelly::Nodes::TrueNode
+        true
+      elsif node.class == RKelly::Nodes::FalseNode
+        false
+      elsif node.class == RKelly::Nodes::NullNode
+        nil
+      else
+        raise GraphQL::ExecutionError, "Invalid filter: #{node} unknown rvalue node"
+      end
+    end
+
+    #def handle_left_value(lvalue, accessor)
+    #  # This is a comparaison left value node
+    #  if accessor.present?
+    #    # The filter is performed on an associated model attribute (accessor)
+    #    associated_model = lvalue.value.to_sym
+    #    # transform associated model name to class name
+    #    associated_model_class = lvalue.value.camelize.constantize
+    #    unless @model.klass.reflect_on_association(associated_model) &&
+    #      associated_model_class.column_names.include?(accessor)
+    #      raise GraphQL::ExecutionError, "Invalid left value: #{lvalue}"
+    #    end
+#
+    #    # Handle 1 level association performing left join
+    #    @model = @model.left_joins(associated_model)
+    #  elsif !@model.column_names.include?(lvalue)
+    #    # verify that the attribute is a valid attribute of @model
+    #    raise GraphQL::ExecutionError, "Invalid left value: #{lvalue}"
+    #  end
+    #end
+
     def valid_id?(id)
       valid_uuid?(id) || id.is_a?(Integer)
     end
@@ -69,75 +242,53 @@ module Graphql
       id.to_s.match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
     end
 
-    def allowed_node?(node)
-      [
-        # Source and expression node
-        RKelly::Nodes::SourceElementsNode,
-        RKelly::Nodes::ExpressionStatementNode,
-        # Parenthesis
-        RKelly::Nodes::ParentheticalNode,
-        # Logical operators
-        RKelly::Nodes::LogicalAndNode,
-        RKelly::Nodes::LogicalOrNode,
-        # Comparaison operators
-        RKelly::Nodes::NotEqualNode,
-        RKelly::Nodes::EqualNode,
-        RKelly::Nodes::StrictEqualNode,
-        RKelly::Nodes::GreaterOrEqualNode,
-        RKelly::Nodes::LessOrEqualNode,
-        RKelly::Nodes::LessNode,
-        RKelly::Nodes::GreaterNode,
-        # left value
-        RKelly::Nodes::ResolveNode,
-        RKelly::Nodes::DotAccessorNode,
-        # Leaf nodes : right value
-        RKelly::Nodes::StringNode,
-        RKelly::Nodes::NumberNode,
-        RKelly::Nodes::TrueNode,
-        RKelly::Nodes::FalseNode,
-        RKelly::Nodes::NullNode,
-      ].include?(node.class)
-    end
-
-    def comparaison_operator?(node)
-      [
-        RKelly::Nodes::NotEqualNode,
-        RKelly::Nodes::EqualNode,
-        RKelly::Nodes::StrictEqualNode,
-        RKelly::Nodes::GreaterOrEqualNode,
-        RKelly::Nodes::LessOrEqualNode,
-        RKelly::Nodes::LessNode,
-        RKelly::Nodes::GreaterNode,
-      ].include?(node.class)
-    end
-
-    def handle_left_value(lvalue, accessor)
-      # This is a comparaison left value node
-      if accessor.present?
-        # The filter is performed on an associated model attribute (accessor)
-        associated_model = lvalue.value.to_sym
-        # transform associated model name to class name
-        associated_model_class = lvalue.value.camelize.constantize
-        unless @model.klass.reflect_on_association(associated_model) &&
-          associated_model_class.column_names.include?(accessor)
-          raise GraphQL::ExecutionError, "Invalid left value: #{lvalue}"
-        end
-
-        # Handle 1 level association performing left join
-        @model = @model.left_joins(associated_model)
-      elsif !@model.column_names.include?(lvalue)
-        # verify that the attribute is a valid attribute of @model
-        raise GraphQL::ExecutionError, "Invalid left value: #{lvalue}"
-      end
-    end
-
-    def sanitize(rvalue)
-      # This is a comparaison right value node
-      # Escape the string to avoid sqli
-      # node.value = ActiveRecord::Base.connection.quote(node.value)
-      rvalue
-    end
-
+    # def allowed_node?(node)
+    #   # ast.each do |node|
+    #   #   unless allowed_node?(node)
+    #   #     raise GraphQL::ExecutionError, "Invalid node type in filter: #{node.class}"
+    #   #   end
+    #   # end
+    #   [
+    #     # Source and expression node
+    #     RKelly::Nodes::SourceElementsNode,
+    #     RKelly::Nodes::ExpressionStatementNode,
+    #     # Parenthesis
+    #     RKelly::Nodes::ParentheticalNode,
+    #     # Logical operators
+    #     RKelly::Nodes::LogicalAndNode,
+    #     RKelly::Nodes::LogicalOrNode,
+    #     # Comparaison operators
+    #     RKelly::Nodes::NotEqualNode,
+    #     RKelly::Nodes::EqualNode,
+    #     RKelly::Nodes::StrictEqualNode,
+    #     RKelly::Nodes::GreaterOrEqualNode,
+    #     RKelly::Nodes::LessOrEqualNode,
+    #     RKelly::Nodes::LessNode,
+    #     RKelly::Nodes::GreaterNode,
+    #     # left value
+    #     RKelly::Nodes::ResolveNode,
+    #     RKelly::Nodes::DotAccessorNode,
+    #     # Leaf nodes : right value
+    #     RKelly::Nodes::StringNode,
+    #     RKelly::Nodes::NumberNode,
+    #     RKelly::Nodes::TrueNode,
+    #     RKelly::Nodes::FalseNode,
+    #     RKelly::Nodes::NullNode,
+    #   ].include?(node.class)
+    # end
+#
+    # def comparaison_operator?(node)
+    #   [
+    #     RKelly::Nodes::NotEqualNode,
+    #     RKelly::Nodes::EqualNode,
+    #     RKelly::Nodes::StrictEqualNode,
+    #     RKelly::Nodes::GreaterOrEqualNode,
+    #     RKelly::Nodes::LessOrEqualNode,
+    #     RKelly::Nodes::LessNode,
+    #     RKelly::Nodes::GreaterNode,
+    #   ].include?(node.class)
+    # end
+#
     def is_enum_field?(field)
       if field.include?('.')
         # The filter is performed on an associated model attribute
@@ -152,7 +303,6 @@ module Graphql
     end
 
     def enum_str_to_i(lvalue, rvalue)
-
       if lvalue.include?('.')
         # The filter is performed on an associated model attribute
         tmp = lvalue.split('.')
@@ -171,23 +321,23 @@ module Graphql
       ret
     end
 
-    def transform_filter
+    def old_transform_filter
       #remove_from_filter=""
-      begin
-        ast = RKelly::Parser.new.parse(@filter)
-      rescue RKelly::SyntaxError => e
-        raise GraphQL::ExecutionError, "Invalid filter: #{e.message}"
-      end
-
-      # Iterate on the AST nodes to verify filter syntax
-      ast.each do |node|
-        unless allowed_node?(node)
-          raise GraphQL::ExecutionError, "Invalid node type in filter: #{node.class}"
-        end
-
-        if node.class == RKelly::Nodes::DotAccessorNode
-          #binding.pry
-        end
+      #begin
+      #  ast = RKelly::Parser.new.parse(@filter)
+      #rescue RKelly::SyntaxError => e
+      #  raise GraphQL::ExecutionError, "Invalid filter: #{e.message}"
+      #end
+#
+      ## Iterate on the AST nodes to verify filter syntax
+      #ast.each do |node|
+      #  unless allowed_node?(node)
+      #    raise GraphQL::ExecutionError, "Invalid node type in filter: #{node.class}"
+      #  end
+#
+      #  if node.class == RKelly::Nodes::DotAccessorNode
+      #    #binding.pry
+      #  end
         # TODO.
         # if node if an operator node find the left and right value
         # transform enum string to integer
@@ -218,32 +368,37 @@ module Graphql
 
 
         #if node.value.is_a?(String)
-        ::Rails.logger.info("Node: #{node.class} , #{node.value}")
-        # end
-      end
-
-      parsed_filter = ast.to_ecma.delete(';')
-      return '' unless parsed_filter.present?
-
-      symbols = {
-        '|': 'ilike',
-        '||': 'OR',
-        '&&': 'AND',
-        '===': '=',
-        '==': '=',
-        '!= null': 'IS NOT NULL',
-        '= null': 'IS NULL'
-      }
-      symbols.each { |k, v| parsed_filter.gsub!(" #{k} ", " #{v} ") }
-      # parsed_filter.delete!(remove_from_filter)
-      @model = @model.where(parsed_filter)
-      #delimiters = ['AND', 'OR']
-      #operators = [' ilike ', ' like ', '=', 'IS NOT NULL', 'IS NULL', '<', '<=', '>', '>=']
-      #@model.klass.defined_enums.values.reduce(:merge)&.each { |k, v| parsed_filter.gsub!(" '#{k}'", " #{v}") }
-      # parsed_filter.delete!(';')
-
-      ::Rails.logger.error("Filter: #{parsed_filter}")
-      ::Rails.logger.error("model: #{@model.to_sql}")
+      #  ::Rails.logger.info("Node: #{node.class} , #{node.value}")
+      #  # end
+      #end
+#
+      #handle_SourceElementsNode(ast)
+      ## ast is the source element node
+      ## ast.value should contain one and only one expression
+#
+#
+      #parsed_filter = ast.to_ecma.delete(';')
+      #return '' unless parsed_filter.present?
+#
+      #symbols = {
+      #  '|': 'ilike',
+      #  '||': 'OR',
+      #  '&&': 'AND',
+      #  '===': '=',
+      #  '==': '=',
+      #  '!= null': 'IS NOT NULL',
+      #  '= null': 'IS NULL'
+      #}
+      #symbols.each { |k, v| parsed_filter.gsub!(" #{k} ", " #{v} ") }
+      ## parsed_filter.delete!(remove_from_filter)
+      #@model = @model.where(parsed_filter)
+      ##delimiters = ['AND', 'OR']
+      ##operators = [' ilike ', ' like ', '=', 'IS NOT NULL', 'IS NULL', '<', '<=', '>', '>=']
+      ##@model.klass.defined_enums.values.reduce(:merge)&.each { |k, v| parsed_filter.gsub!(" '#{k}'", " #{v}") }
+      ## parsed_filter.delete!(';')
+#
+      #::Rails.logger.error("Filter: #{parsed_filter}")
+      #::Rails.logger.error("model: #{@model.to_sql}")
 
       # TODO handle  '!= null' '= null' in right value ...
       # TODO handle  'NOT' operator in left value ...

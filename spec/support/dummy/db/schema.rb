@@ -32,6 +32,7 @@ ActiveRecord::Schema[7.0].define(version: 2022_08_03_174934) do
     t.float "price"
     t.integer "energy_grade"
     t.boolean "principal"
+    t.datetime "build_at", precision: nil
     t.uuid "user_id"
     t.uuid "city_id"
     t.datetime "created_at", precision: nil, null: false

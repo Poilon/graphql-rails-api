@@ -1,30 +1,130 @@
 # frozen_string_literal: true
-require 'rails_helper'
+require "rails_helper"
 
-describe 'Filter empty test' do
-    let!(:jason)  { create(:user, email: 'jason@gmail.com') }
-    let!(:boby)   { create(:user, email: 'boby@gmail.com') }
-    let!(:sandy)  { create(:user, email: 'sandy@gmail.com') }
+describe "Generating some data, performing a graphql query" do
+  NOW = DateTime.now
 
-    it 'do nothing' do
-      #DummySchema.execute('query { users { id name } }', context: {current_user: User.first })
-      #res = DummySchema.execute('query { users { id first_name } }', variables: {}, context: {current_user: User.first })
-      res = DummySchema.execute('query { users { id first_name } }', variables: {}, context: {current_user: User.first })
-      #Graphql::HydrateQuery.new(
-      #  model.all,
-      #  @context,
-      #  order_by: params[:order_by],
-      #  filter: params[:filter],
-      #  per_page: params[:per_page] && params[:per_page] > 1000 ? 1000 : params[:per_page],
-      #  page: params[:page],
-      #  user: user
-      #).run.compact
-#
-      expect(res["errors"].nil?).to be_truthy
-      expect(res["data"]["users"].count).to eq(3)
-    end
+  def run_query(query, filter)
+    DummySchema.execute(
+      query,
+      variables: { filter: filter },
+      context: { current_user: User.first },
+    )
+  end
 
-    it 'count users' do
-      expect(User.count).to eq(3)
-    end
+  def house_query(filter)
+    res = run_query("query($filter: String) { houses(filter: $filter) { id } }", filter)
+    expect(res["errors"].nil?).to be_truthy
+    res["data"]["houses"]
+  end
+
+  let!(:berlin) { create(:city, name: "Berlin") }
+  let!(:paris) { create(:city, name: "Paris") }
+
+  let!(:jason) { create(:user, email: "jason@gmail.com") }
+  let!(:boby) { create(:user, email: "boby@gmail.com") }
+  let!(:sandy) { create(:user, email: "sandy@gmail.com") }
+
+  let!(:house1) { create(:house, user: jason, city: berlin, street: "street1", number: 1, price: 25_000, energy_grade: "d", principal: true, build_at: NOW + 1.day) }
+  let!(:house2) { create(:house, user: jason, city: berlin, street: "street1", number: 10, price: 30_000, energy_grade: "a", principal: true, build_at: NOW + 1.day) }
+  let!(:house3) { create(:house, user: jason, city: berlin, street: "street1", number: 50, price: 50_000, energy_grade: "a", principal: true, build_at: NOW + 1.day) }
+  let!(:house4) { create(:house, user: jason, city: berlin, street: "street1", number: 75, price: 60_000, energy_grade: "b", principal: true, build_at: NOW + 1.day) }
+  let!(:house5) { create(:house, user: jason, city: berlin, street: "street1", number: 100, price: 100_000, energy_grade: "b", principal: true, build_at: NOW + 1.day) }
+  let!(:house6) { create(:house, user: boby, city: berlin, street: "street1", number: 150, price: 200_000, energy_grade: "b", principal: true, build_at: NOW + 1.day) }
+  let!(:house7) { create(:house, user: boby, city: berlin, street: "street1", number: 200, price: 400_000.05, energy_grade: "c", principal: false, build_at: NOW + 1.day) }
+  let!(:house8) { create(:house, user: boby, city: berlin, street: "street1", number: 250, price: 800_000.23, energy_grade: "c", principal: false, build_at: NOW + 1.day) }
+  let!(:house9) { create(:house, user: sandy, city: berlin, street: "street1", number: 300, price: 1_000_000, energy_grade: "c", principal: false, build_at: NOW + 1.day) }
+  let!(:house10) { create(:house, user: sandy, city: paris, street: "street42", number: 350, price: 1_250_000, energy_grade: "a", principal: false, build_at: NOW + 1.day) }
+
+  it "with no filter" do
+    res = DummySchema.execute("query { users { id first_name } }", variables: {}, context: { current_user: User.first })
+
+    expect(res["errors"].nil?).to be_truthy
+    expect(res["data"]["users"].count).to eq(3)
+  end
+
+  it "with a filter on a string" do
+    expect(house_query("street == 'street42'").count).to eq(1)
+    expect(house_query("street != 'street42'").count).to eq(9)
+    # TODO case incensitive
+    #expect(house_query("street == 'strEEt42'").count).to eq(1)
+    #expect(house_query("street === 'strEEt42'").count).to eq(0)
+    expect(house_query("street == 'unknown street'").count).to eq(0)
+  end
+
+  it "with a filter on a uuid" do
+    expect(house_query("id == '#{house1.id}'").count).to eq(1)
+  end
+
+  it "with a filter on a int" do
+    expect(house_query("number > 100").count).to eq(5)
+    expect(house_query("number >= 100").count).to eq(6)
+    expect(house_query("number < 50").count).to eq(2)
+    expect(house_query("number <= 50").count).to eq(3)
+    expect(house_query("number == 50").count).to eq(1)
+    expect(house_query("number == 50").count).to eq(1)
+    expect(house_query("number != 50").count).to eq(9)
+  end
+
+  it "with a filter on a float" do
+    expect(house_query("price > 100000").count).to eq(5)
+    expect(house_query("price >= 100000").count).to eq(6)
+    expect(house_query("price < 50000").count).to eq(2)
+    expect(house_query("price <= 50000").count).to eq(3)
+    expect(house_query("price == 50000").count).to eq(1)
+    expect(house_query("price != 50000").count).to eq(9)
+  end
+
+  it "with a filter on a datetime" do
+    # TODO.
+    #expect(house_query("build_at > #{NOW + 1.day}").count).to eq(0)
+    #expect(house_query("build_at >= #{NOW + 1.day}").count).to eq(9)
+    #expect(house_query("build_at <  #{NOW + 1.day}").count).to eq(2)
+    #expect(house_query("build_at <= #{NOW + 1.day}").count).to eq(3)
+    #expect(house_query("build_at == #{NOW + 1.day}").count).to eq(9)
+    #expect(house_query("build_at != #{NOW + 1.day}").count).to eq(0)
+  end
+
+  it "with a filter on an enum" do
+    # TODO enum
+    #expect(house_query("energy_grade == b").count).to eq(3)
+    #expect(house_query("energy_grade != d").count).to eq(9)
+  end
+
+  it "with a filter on a bool" do
+    expect(house_query("principal == true").count).to eq(6)
+    expect(house_query("principal != false").count).to eq(6)
+  end
+
+  it "with a filter on an association string field" do
+    # expect(house_query("user.email == 'jason@gmail.com'").count).to eq(6)
+    # expect(house_query("user.email == 'jASon@gmail.com'").count).to eq(6)
+    # expect(house_query("user.email != 'boby@gmail.com'").count).to eq(7)
+  end
+
+  it "with a filter containing a and logical operator" do
+    filter = "street != 'unknown' && street != 'doesntexists' && street == 'street42'"
+    expect(house_query(filter).count).to eq(1)
+    filter = "street != 'street42' && street != 'doesntexists' && street == 'street42'"
+    expect(house_query(filter).count).to eq(0)
+    filter = "street != 'street42' && number >= 200"
+    expect(house_query(filter).count).to eq(3)
+  end
+
+  it "with a filter containing a or logical operator" do
+    filter = "street != 'unknown' || street != 'street42'"
+    expect(house_query(filter).count).to eq(10)
+    filter = "street == 'street1' || street == 'unknown' || street == 'street42'"
+    expect(house_query(filter).count).to eq(10)
+    filter = "street == 'unknown' || street == 'doesntexists'"
+    expect(house_query(filter).count).to eq(0)
+  end
+
+  it "with a filter containing useless parenthesis" do
+    expect(house_query("(((street != 'unknown') && (((street == null)) || street != 'doesntexists')))").count).to eq(10)
+  end
+
+  it "with a complex filter containing a and / or logical operator and parenthesis" do
+    # "user.workspace.id != '4532cddd-6999-4336-b92b-48047bdf5de0' && id == 'a078dedc-f857-496f-a9a1-2d632f6ed065' && (fec_status == processing || fec_status == not_generated)"
+  end
 end

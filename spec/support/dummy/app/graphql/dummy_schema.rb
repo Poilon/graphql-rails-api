@@ -18,7 +18,7 @@ end
 
 # Schema definition
 DummySchema = GraphQL::Schema.define do
-  # mutation(MutationType)
+  mutation(MutationType)
   query(QueryType)
   directives [ConnectionDirective, ClientDirective]
   type_error lambda { |err, query_ctx|

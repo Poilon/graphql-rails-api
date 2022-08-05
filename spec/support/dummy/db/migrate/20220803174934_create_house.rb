@@ -6,6 +6,7 @@ class CreateHouse < ActiveRecord::Migration[5.2]
       t.float :price
       t.integer :energy_grade
       t.boolean :principal
+      t.datetime :build_at
       t.uuid :user_id
       t.uuid :city_id
       t.timestamps
