@@ -48,7 +48,7 @@ describe "Generating some data, performing a graphql query" do
     expect(house_query("street == 'street42'").count).to eq(1)
     expect(house_query("street != 'street42'").count).to eq(9)
     expect(house_query("street == 'unknown street'").count).to eq(0)
-    # test case censitivity
+    # test case sensitivity
     expect(house_query("street == 'strEEt42'").count).to eq(1)
     expect(house_query("street === 'strEEt42'").count).to eq(0)
   end
