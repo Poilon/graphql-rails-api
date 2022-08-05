@@ -14,6 +14,7 @@ describe "Generating some data, performing a graphql query" do
 
   def house_query(filter)
     res = run_query("query($filter: String) { houses(filter: $filter) { id } }", filter)
+    puts res["errors"] if res["errors"].present?
     expect(res["errors"].nil?).to be_truthy
     res["data"]["houses"]
   end
@@ -25,10 +26,10 @@ describe "Generating some data, performing a graphql query" do
   let!(:boby) { create(:user, email: "boby@gmail.com") }
   let!(:sandy) { create(:user, email: "sandy@gmail.com") }
 
-  let!(:house1) { create(:house, user: jason, city: berlin, street: "street1", number: 1, price: 25_000, energy_grade: "d", principal: true, build_at: NOW + 1.day) }
-  let!(:house2) { create(:house, user: jason, city: berlin, street: "street1", number: 10, price: 30_000, energy_grade: "a", principal: true, build_at: NOW + 1.day) }
-  let!(:house3) { create(:house, user: jason, city: berlin, street: "street1", number: 50, price: 50_000, energy_grade: "a", principal: true, build_at: NOW + 1.day) }
-  let!(:house4) { create(:house, user: jason, city: berlin, street: "street1", number: 75, price: 60_000, energy_grade: "b", principal: true, build_at: NOW + 1.day) }
+  let!(:house1) { create(:house, user: jason, city: berlin, street: "street1", number: 1, price: 25_000, energy_grade: "d", principal: true, build_at: NOW - 1.day) }
+  let!(:house2) { create(:house, user: jason, city: berlin, street: "street1", number: 10, price: 30_000, energy_grade: "a", principal: true, build_at: NOW - 1.day) }
+  let!(:house3) { create(:house, user: jason, city: berlin, street: "street1", number: 50, price: 50_000, energy_grade: "a", principal: true, build_at: NOW - 1.day) }
+  let!(:house4) { create(:house, user: jason, city: berlin, street: "street1", number: 75, price: 60_000, energy_grade: "b", principal: true, build_at: NOW - 1.day) }
   let!(:house5) { create(:house, user: jason, city: berlin, street: "street1", number: 100, price: 100_000, energy_grade: "b", principal: true, build_at: NOW + 1.day) }
   let!(:house6) { create(:house, user: boby, city: berlin, street: "street1", number: 150, price: 200_000, energy_grade: "b", principal: true, build_at: NOW + 1.day) }
   let!(:house7) { create(:house, user: boby, city: berlin, street: "street1", number: 200, price: 400_000.05, energy_grade: "c", principal: false, build_at: NOW + 1.day) }
@@ -46,10 +47,10 @@ describe "Generating some data, performing a graphql query" do
   it "with a filter on a string" do
     expect(house_query("street == 'street42'").count).to eq(1)
     expect(house_query("street != 'street42'").count).to eq(9)
-    # TODO case incensitive
-    #expect(house_query("street == 'strEEt42'").count).to eq(1)
-    #expect(house_query("street === 'strEEt42'").count).to eq(0)
     expect(house_query("street == 'unknown street'").count).to eq(0)
+    # test case censitivity
+    expect(house_query("street == 'strEEt42'").count).to eq(1)
+    expect(house_query("street === 'strEEt42'").count).to eq(0)
   end
 
   it "with a filter on a uuid" do
@@ -76,13 +77,10 @@ describe "Generating some data, performing a graphql query" do
   end
 
   it "with a filter on a datetime" do
-    # TODO.
-    #expect(house_query("build_at > #{NOW + 1.day}").count).to eq(0)
-    #expect(house_query("build_at >= #{NOW + 1.day}").count).to eq(9)
-    #expect(house_query("build_at <  #{NOW + 1.day}").count).to eq(2)
-    #expect(house_query("build_at <= #{NOW + 1.day}").count).to eq(3)
-    #expect(house_query("build_at == #{NOW + 1.day}").count).to eq(9)
-    #expect(house_query("build_at != #{NOW + 1.day}").count).to eq(0)
+    expect(house_query("build_at > '#{NOW}'").count).to eq(6)
+    expect(house_query("build_at < '#{NOW}'").count).to eq(4)
+    expect(house_query("build_at >= '#{NOW}'").count).to eq(6)
+    expect(house_query("build_at <= '#{NOW}'").count).to eq(4)
   end
 
   it "with a filter on an enum" do

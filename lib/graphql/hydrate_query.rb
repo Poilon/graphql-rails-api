@@ -1,9 +1,8 @@
-require 'deep_pluck'
-require 'rkelly'
+require "deep_pluck"
+require "rkelly"
 
 module Graphql
   class HydrateQuery
-
     def initialize(model, context, order_by: nil, filter: nil, check_visibility: true, id: nil, user: nil, page: nil, per_page: nil)
       @context = context
       @filter = filter
@@ -21,7 +20,7 @@ module Graphql
       #@page = page || 1
       #@per_page = per_page.to_i || 1000
       # params[:per_page] && params[:per_page] > 1000 ? 1000 : params[:per_page]
-      @per_page = per_page.present? ? per_page.to_i :  1000
+      @per_page = per_page.present? ? per_page.to_i : 1000
     end
 
     def run
@@ -51,28 +50,26 @@ module Graphql
 
       ::Rails.logger.info(@model.to_sql)
       OpenStruct.new(
-        data: deep_pluck_to_structs(@context&.irep_node&.typed_children&.values&.first.try(:[], 'data')),
+        data: deep_pluck_to_structs(@context&.irep_node&.typed_children&.values&.first.try(:[], "data")),
         total_count: @total,
         per_page: @per_page,
-        page: @page
+        page: @page,
       )
     end
 
     private
 
     def transform_filter
-      begin
-        ast = RKelly::Parser.new.parse(@filter)
-      rescue RKelly::SyntaxError => e
-        raise GraphQL::ExecutionError, "Invalid filter: #{e.message}"
-      end
+      ast = RKelly::Parser.new.parse(@filter)
 
       exprs = ast.value
       if exprs.count != 1
-        raise GraphQL::ExecutionError, "Invalid filter: #{@node}, one expression allowed"
+        raise GraphQL::ExecutionError, "Invalid filter: #{@filter}, only one expression allowed"
       end
 
       @model = handle_node(exprs.first.value, @model)
+    rescue RKelly::SyntaxError => e
+      raise GraphQL::ExecutionError, "Invalid filter: #{e.message}"
     end
 
     def handle_node(node, model)
@@ -115,51 +112,60 @@ module Graphql
 
     def handle_NotEqualNode(node, model)
       arg = {}
-      sym = sym_from_node(node.left)
-      val = value_from_node(node.value)
+      sym, sym_type = sym_from_node(node.left)
+      val = value_from_node(node.value, sym_type)
       arg[sym] = val
       model.where.not(arg)
     end
 
     def handle_EqualNode(node, model)
       arg = {}
-      sym = sym_from_node(node.left)
-      val = value_from_node(node.value)
+      sym, sym_type = sym_from_node(node.left)
+      val = value_from_node(node.value, sym_type)
       arg[sym] = val
-      model.where(arg)
+
+      if sym_type == :text || sym_type == :string
+        model.where("#{sym} ILIKE ?", val)
+      else
+        model.where(arg)
+      end
     end
 
     def handle_StrictEqualNode(node, model)
       arg = {}
-      sym = sym_from_node(node.left)
-      val = value_from_node(node.value)
+      sym, sym_type = sym_from_node(node.left)
+      val = value_from_node(node.value, sym_type)
       arg[sym] = val
-      model.where(arg)
+      if sym_type == :text || sym_type == :string
+        model.where("#{sym} LIKE ?", val)
+      else
+        model.where(arg)
+      end
     end
 
     def handle_GreaterOrEqualNode(node, model)
-      sym = sym_from_node(node.left)
-      val = value_from_node(node.value)
-      model.where("#{sym.to_s} >= ?", val)
+      sym, sym_type = sym_from_node(node.left)
+      val = value_from_node(node.value, sym_type)
+      model.where("#{sym} >= ?", val)
     end
 
     def handle_LessOrEqualNode(node, model)
-      sym = sym_from_node(node.left)
-      val = value_from_node(node.value)
-      model.where("#{sym.to_s} <= ?", val)
+      sym, sym_type = sym_from_node(node.left)
+      val = value_from_node(node.value, sym_type)
+      model.where("#{sym} <= ?", val)
     end
 
     def handle_LessNode(node, model)
-      sym = sym_from_node(node.left)
-      val = value_from_node(node.value)
-      model.where("#{sym.to_s} < ?", val)
+      sym, sym_type = sym_from_node(node.left)
+      val = value_from_node(node.value, sym_type)
+      model.where("#{sym} < ?", val)
     end
 
     def handle_GreaterNode(node, model)
       arg = {}
-      sym = sym_from_node(node.left)
-      val = value_from_node(node.value)
-      model.where("#{sym.to_s} > ?", val)
+      sym, sym_type = sym_from_node(node.left)
+      val = value_from_node(node.value, sym_type)
+      model.where("#{sym} > ?", val)
     end
 
     def sym_from_node(node)
@@ -178,7 +184,8 @@ module Graphql
         # verify that the attribute is a valid attribute of @model
         raise GraphQL::ExecutionError, "Invalid left value: #{field}"
       end
-      field.to_sym
+      sym = field.to_sym
+      [sym, @model.type_for_attribute(sym).type]
     end
 
     def sym_from_dot_accessor_node(node)
@@ -192,15 +199,22 @@ module Graphql
       #    associated_model_class.column_names.include?(accessor)
       #    raise GraphQL::ExecutionError, "Invalid left value: #{lvalue}"
       #  end
-#
+      #
       #  # Handle 1 level association performing left join
       #  @model = @model.left_joins(associated_model)
       #end
     end
 
-    def value_from_node(node)
+    def value_from_node(node, sym_type)
       if node.class == RKelly::Nodes::StringNode
-        node.value.gsub(/^'|'$/, '')
+        val = node.value.gsub(/^'|'$/, "")
+        if sym_type == :datetime
+          DateTime.parse(val)
+        elsif sym_type == :date
+          Date.parse(val)
+        else
+          val
+        end
       elsif node.class == RKelly::Nodes::NumberNode
         node.value
       elsif node.class == RKelly::Nodes::TrueNode
@@ -225,7 +239,7 @@ module Graphql
     #      associated_model_class.column_names.include?(accessor)
     #      raise GraphQL::ExecutionError, "Invalid left value: #{lvalue}"
     #    end
-#
+    #
     #    # Handle 1 level association performing left join
     #    @model = @model.left_joins(associated_model)
     #  elsif !@model.column_names.include?(lvalue)
@@ -276,7 +290,7 @@ module Graphql
     #     RKelly::Nodes::NullNode,
     #   ].include?(node.class)
     # end
-#
+    #
     # def comparaison_operator?(node)
     #   [
     #     RKelly::Nodes::NotEqualNode,
@@ -288,11 +302,11 @@ module Graphql
     #     RKelly::Nodes::GreaterNode,
     #   ].include?(node.class)
     # end
-#
+    #
     def is_enum_field?(field)
-      if field.include?('.')
+      if field.include?(".")
         # The filter is performed on an associated model attribute
-        tmp = field.split('.')
+        tmp = field.split(".")
         associated_model = tmp.first.to_sym
         attribute = tmp.last.to_sym
         # transform associated model name to class name
@@ -303,9 +317,9 @@ module Graphql
     end
 
     def enum_str_to_i(lvalue, rvalue)
-      if lvalue.include?('.')
+      if lvalue.include?(".")
         # The filter is performed on an associated model attribute
-        tmp = lvalue.split('.')
+        tmp = lvalue.split(".")
         associated_model = tmp.first.to_sym
         attribute = tmp.last.to_sym
         # transform associated model name to class name
@@ -328,58 +342,57 @@ module Graphql
       #rescue RKelly::SyntaxError => e
       #  raise GraphQL::ExecutionError, "Invalid filter: #{e.message}"
       #end
-#
+      #
       ## Iterate on the AST nodes to verify filter syntax
       #ast.each do |node|
       #  unless allowed_node?(node)
       #    raise GraphQL::ExecutionError, "Invalid node type in filter: #{node.class}"
       #  end
-#
+      #
       #  if node.class == RKelly::Nodes::DotAccessorNode
       #    #binding.pry
       #  end
-        # TODO.
-        # if node if an operator node find the left and right value
-        # transform enum string to integer
-        # transform date string to date
+      # TODO.
+      # if node if an operator node find the left and right value
+      # transform enum string to integer
+      # transform date string to date
 
-        #if comparaison_operator?(node)
-        #  left_node = node.left
-        #  #remove_from_filter = "#{node.left.value}."
-        #  #if node.left.accessor.present?
-        #  #  accessor = node.left.accessor
-        #  #end
-#
-        #  right_node = node.value
-#
-        #  handle_left_value(left_node.value, nil)
-        #  right_node.value = sanitize(right_node.value) if right_node.class == RKelly::Nodes::StringNode
-#
-        #  # handle enum transformation
-        #  if is_enum_field?(left_node.value)
-        #    right_node.value = enum_str_to_i(left_node.value, right_node.value)
-        #  end
-        #  # verify the corresponding left value is an enum and that the right value is a valid enum value
-        #  # and check type compatibility
-        #end
-#
-        #if node.class == RKelly::Nodes::ResolveNode
-        #elsif node.class == RKelly::Nodes::StringNode
+      #if comparaison_operator?(node)
+      #  left_node = node.left
+      #  #remove_from_filter = "#{node.left.value}."
+      #  #if node.left.accessor.present?
+      #  #  accessor = node.left.accessor
+      #  #end
+      #
+      #  right_node = node.value
+      #
+      #  handle_left_value(left_node.value, nil)
+      #  right_node.value = sanitize(right_node.value) if right_node.class == RKelly::Nodes::StringNode
+      #
+      #  # handle enum transformation
+      #  if is_enum_field?(left_node.value)
+      #    right_node.value = enum_str_to_i(left_node.value, right_node.value)
+      #  end
+      #  # verify the corresponding left value is an enum and that the right value is a valid enum value
+      #  # and check type compatibility
+      #end
+      #
+      #if node.class == RKelly::Nodes::ResolveNode
+      #elsif node.class == RKelly::Nodes::StringNode
 
-
-        #if node.value.is_a?(String)
+      #if node.value.is_a?(String)
       #  ::Rails.logger.info("Node: #{node.class} , #{node.value}")
       #  # end
       #end
-#
+      #
       #handle_SourceElementsNode(ast)
       ## ast is the source element node
       ## ast.value should contain one and only one expression
-#
-#
+      #
+      #
       #parsed_filter = ast.to_ecma.delete(';')
       #return '' unless parsed_filter.present?
-#
+      #
       #symbols = {
       #  '|': 'ilike',
       #  '||': 'OR',
@@ -396,7 +409,7 @@ module Graphql
       ##operators = [' ilike ', ' like ', '=', 'IS NOT NULL', 'IS NULL', '<', '<=', '>', '>=']
       ##@model.klass.defined_enums.values.reduce(:merge)&.each { |k, v| parsed_filter.gsub!(" '#{k}'", " #{v}") }
       ## parsed_filter.delete!(';')
-#
+      #
       #::Rails.logger.error("Filter: #{parsed_filter}")
       #::Rails.logger.error("model: #{@model.to_sql}")
 
@@ -423,7 +436,7 @@ module Graphql
       #   lvalue = values.first&.strip
       #   rvalue = values.second&.strip
       #   return if invalid_format(lvalue) || invalid_format(rvalue)
-#
+      #
       #   if lvalue&.include?('.')
       #     lvalue_model = lvalue.split('.').first.to_sym
       #     @model = @model.left_joins(lvalue_model) if @model.klass.reflect_on_association(lvalue_model)
@@ -460,16 +473,16 @@ module Graphql
     end
 
     def transform_order
-      sign = @order_by.split(' ').last.downcase == 'desc' ? 'desc' : 'asc'
-      column = @order_by.split(' ').first.strip
+      sign = @order_by.split(" ").last.downcase == "desc" ? "desc" : "asc"
+      column = @order_by.split(" ").first.strip
       return if invalid_format(column)
 
-      if column.include?('.')
-        @model = @model.left_joins(column.split('.').first.to_sym)
+      if column.include?(".")
+        @model = @model.left_joins(column.split(".").first.to_sym)
         string_type = %i[string text].include?(
-          evaluate_model(@model, column.split('.').first).columns_hash[column.split('.').last]&.type
+          evaluate_model(@model, column.split(".").first).columns_hash[column.split(".").last]&.type
         )
-        column = "#{column.split('.').first.pluralize}.#{column.split('.').last}"
+        column = "#{column.split(".").first.pluralize}.#{column.split(".").last}"
         @model = @model.order(Arel.sql("#{string_type ? "upper(#{column})" : column} #{sign}"))
       elsif @order_by
         if %i[string text].include?(@model.columns_hash[column]&.type)
@@ -492,7 +505,7 @@ module Graphql
     #   puts ('------------------')
     #   puts (@filter)
     #   puts ('------------------')
-#
+    #
     #   if @filter
     #     # Handle enum, transform js to sql operators
     #     transformed_filter = transform_filter(@filter)
@@ -504,7 +517,7 @@ module Graphql
     #     to_join.reject { |j| j.to_s.pluralize.to_sym == @model.klass.to_s.pluralize.underscore.to_sym }.each do |j|
     #       @model = @model.left_joins(j).distinct
     #     end
-#
+    #
     #     # Split on operators
     #     transformed_filter = transformed_filter.split(/(AND|OR|like|ilike)/).map do |e|
     #       # Re split on operators != = IS
@@ -522,14 +535,14 @@ module Graphql
     #     puts ('------------------')
     #     @model = @model.where(transformed_filter)
     #   end
-#
+    #
     #   return unless @order_by
-#
+    #
     #   # There is an order by arg
     #   # Find sign and column
     #   sign = @order_by.split(' ').last.downcase == 'desc' ? 'desc' : 'asc'
     #   column = @order_by.split(' ').first
-#
+    #
     #   if column.include?('.')
     #     # Order on association => Left joins on the associated table
     #     @model = @model.left_joins(column.split('.').first.to_sym)
@@ -553,11 +566,11 @@ module Graphql
     #     @model = @model.order("#{column} #{sign}")
     #   end
     # end
-#
+    #
     # def transform_filter(filter)
     #   parsed_filter = RKelly::Parser.new.parse(filter.gsub('like', ' | '))&.to_ecma
     #   return '' unless parsed_filter
-#
+    #
     #   @model.klass.defined_enums.values.reduce(:merge)&.each { |k, v| parsed_filter.gsub!("= #{k}", "= #{v}") }
     #   parsed_filter.gsub(' | ', ' ilike ').gsub('||', 'OR').gsub('&&', 'AND').gsub('===', '=').gsub('==', '=').gsub(
     #     '!= null', 'IS NOT NULL'
@@ -592,7 +605,7 @@ module Graphql
     def hash_to_array_of_hashes(hash, parent_class)
       return if parent_class.nil? || hash.nil?
 
-      hash['id'] = nil if hash['id'].blank?
+      hash["id"] = nil if hash["id"].blank?
       fetch_ids_from_relation(hash)
 
       hash.each_with_object([]) do |(k, v), arr|
@@ -605,12 +618,12 @@ module Graphql
     end
 
     def fetch_ids_from_relation(hash)
-      hash.select { |k, _| k.ends_with?('_ids') }.each do |(k, _)|
-        collection_name = k.gsub('_ids', '').pluralize
+      hash.select { |k, _| k.ends_with?("_ids") }.each do |(k, _)|
+        collection_name = k.gsub("_ids", "").pluralize
         if hash[collection_name].blank?
-          hash[collection_name] = { 'id' => nil }
+          hash[collection_name] = { "id" => nil }
         else
-          hash[collection_name]['id'] = nil
+          hash[collection_name]["id"] = nil
         end
       end
     end
@@ -639,7 +652,7 @@ module Graphql
 
     def parse_fields(irep_node)
       fields = irep_node&.scoped_children&.values&.first
-      fields = fields['edges'].scoped_children.values.first['node']&.scoped_children&.values&.first if fields&.key?('edges')
+      fields = fields["edges"].scoped_children.values.first["node"]&.scoped_children&.values&.first if fields&.key?("edges")
       return if fields.blank?
 
       fields.each_with_object({}) do |(k, v), h|
@@ -648,8 +661,7 @@ module Graphql
     end
 
     def model_name
-      @model.class.to_s.split('::').first.underscore.pluralize
+      @model.class.to_s.split("::").first.underscore.pluralize
     end
-
   end
 end
