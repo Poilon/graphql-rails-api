@@ -55,6 +55,10 @@ describe "Generating some data, performing a graphql query" do
     expect(house_query("street !== 'strEEt42'").count).to eq(10)
   end
 
+  it "with a filter on a double quoted string" do
+    expect(house_query("street == \"street42\"").count).to eq(1)
+  end
+
   it "with a filter on a uuid" do
     expect(house_query("id == '#{house1.id}'").count).to eq(1)
   end

@@ -161,7 +161,7 @@ module Graphql
 
     def value_from_node(node, sym_type, sym, model)
       if node.class == RKelly::Nodes::StringNode
-        val = node.value.gsub(/^'|'$/, "")
+        val = node.value.gsub(/^'|'$|^"|"$/, "")
         if sym_type == :datetime
           DateTime.parse(val)
         elsif sym_type == :date
