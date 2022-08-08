@@ -31,7 +31,6 @@ module Graphql
         @model = @model.limit(@per_page)
         @model = @model.offset(@per_page * (@page - 1))
 
-        # filter_and_order
         transform_filter if @filter
         transform_order if @order_by
 
@@ -40,7 +39,6 @@ module Graphql
     end
 
     def paginated_run
-      # filter_and_order
       transform_filter if @filter
       transform_order if @order_by
 
@@ -60,6 +58,8 @@ module Graphql
     private
 
     def transform_filter
+      return if @filter.blank?
+
       ast = RKelly::Parser.new.parse(@filter)
 
       exprs = ast.value
@@ -143,10 +143,9 @@ module Graphql
         # verify that the attribute is a valid attribute of @model
         raise GraphQL::ExecutionError, "Invalid left value: #{field}"
       end
-      #field_sym = field.to_sym
       field_type = model.column_for_attribute(field.to_sym).type
       value = value_from_node(node.value, field_type, field.to_sym, model)
-      [model, field, field_type, value]
+      [model, "#{@model.klass.to_s.downcase.pluralize}.#{field}", field_type, value]
     end
 
     def handle_operator_node(node, model)
@@ -195,8 +194,22 @@ module Graphql
     def handle_NotEqualNode(node, model)
       model, field, type, value = handle_operator_node(node, model)
 
-      if type == :text || type == :string
+      if value.nil?
+        model.where("#{field} IS NOT NULL")
+      elsif type == :text || type == :string
         model.where.not("#{field} ILIKE ?", value)
+      else
+        model.where.not("#{field} = ?", value)
+      end
+    end
+
+    def handle_NotStrictEqualNode(node, model)
+      model, field, type, value = handle_operator_node(node, model)
+
+      if value.nil?
+        model.where("#{field} IS NOT NULL")
+      elsif type == :text || type == :string
+        model.where.not("#{field} LIKE ?", value)
       else
         model.where.not("#{field} = ?", value)
       end
@@ -205,7 +218,9 @@ module Graphql
     def handle_EqualNode(node, model)
       model, field, type, value = handle_operator_node(node, model)
 
-      if type == :text || type == :string
+      if value.nil?
+        model.where("#{field} IS NULL")
+      elsif type == :text || type == :string
         model.where("#{field} ILIKE ?", value)
       else
         model.where("#{field} = ?", value)
@@ -215,20 +230,12 @@ module Graphql
     def handle_StrictEqualNode(node, model)
       model, field, type, value = handle_operator_node(node, model)
 
-      if type == :text || type == :string
+      if value.nil?
+        model.where("#{field} IS NULL")
+      elsif type == :text || type == :string
         model.where("#{field} LIKE ?", value)
       else
         model.where("#{field} = ?", value)
-      end
-    end
-
-    def handle_NotStrictEqualNode(node, model)
-      model, field, type, value = handle_operator_node(node, model)
-
-      if type == :text || type == :string
-        model.where.not("#{field} LIKE ?", value)
-      else
-        model.where.not("#{field} = ?", value)
       end
     end
 

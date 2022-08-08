@@ -99,12 +99,20 @@ describe "Generating some data, performing a graphql query" do
     expect(house_query("principal != false").count).to eq(6)
   end
 
+  it "with a filter on a null value" do
+    expect(house_query("id != null").count).to eq(10)
+  end
+
   it "with a filter on an association string field" do
     expect(house_query("user.email == 'jason@gmail.com'").count).to eq(5)
     expect(house_query("user.email == 'jASon@gmail.com'").count).to eq(5)
     expect(house_query("user.email === 'jASon@gmail.com'").count).to eq(0)
     expect(house_query("user.email != 'boby@gmail.com'").count).to eq(7)
     expect(house_query("user.email !== 'Boby@gmail.com'").count).to eq(10)
+  end
+
+  it "with an ambigous column id" do
+    expect(house_query("user.email != 'unknow@gmail.com' && id != null && user.id == '#{jason.id}'").count).to eq(5)
   end
 
   it "with a filter containing a and logical operator" do
@@ -129,7 +137,12 @@ describe "Generating some data, performing a graphql query" do
     expect(house_query("(((street != 'unknown') && (((street == null)) || street != 'doesntexists')))").count).to eq(10)
   end
 
-  it "with a complex filter containing a and / or logical operator and parenthesis" do
-    # "user.workspace.id != '4532cddd-6999-4336-b92b-48047bdf5de0' && id == 'a078dedc-f857-496f-a9a1-2d632f6ed065' && (fec_status == processing || fec_status == not_generated)"
+  it "with a blank filter" do
+    expect(house_query("").count).to eq(10)
+  end
+
+  it "with a complex filter" do
+    filter = "(user.email != null && id != \"a078dedc-f757-496f-a9a1-2d632f6ed065\" && (((street != 'unknown') && (((street == null)) || street != 'doesntexists'))))"
+    expect(house_query(filter).count).to eq(10)
   end
 end
