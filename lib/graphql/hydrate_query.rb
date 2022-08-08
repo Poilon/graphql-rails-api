@@ -67,6 +67,11 @@ module Graphql
         raise GraphQL::ExecutionError, "Invalid filter: #{@filter}, only one expression allowed"
       end
 
+      ast.each do |node|
+        if node.class == RKelly::Nodes::DotAccessorNode
+        end
+      end
+
       @model = handle_node(exprs.first.value, @model)
     rescue RKelly::SyntaxError => e
       raise GraphQL::ExecutionError, "Invalid filter: #{e.message}"
@@ -85,6 +90,8 @@ module Graphql
         handle_EqualNode(node, model)
       elsif node.class == RKelly::Nodes::StrictEqualNode
         handle_StrictEqualNode(node, model)
+      elsif node.class == RKelly::Nodes::NotStrictEqualNode
+        handle_NotStrictEqualNode(node, model)
       elsif node.class == RKelly::Nodes::GreaterOrEqualNode
         handle_GreaterOrEqualNode(node, model)
       elsif node.class == RKelly::Nodes::LessOrEqualNode
@@ -94,7 +101,7 @@ module Graphql
       elsif node.class == RKelly::Nodes::GreaterNode
         handle_GreaterNode(node, model)
       else
-        raise GraphQL::ExecutionError, "Invalid filter: #{@node} unknown operator"
+        raise GraphQL::ExecutionError, "Invalid filter: #{node.class} unknown operator"
       end
     end
 
@@ -110,99 +117,46 @@ module Graphql
       handle_node(node.left, model).or(handle_node(node.value, model))
     end
 
-    def handle_NotEqualNode(node, model)
-      arg = {}
-      sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type, sym, model)
-      arg[sym] = val
-      model.where.not(arg)
-    end
-
-    def handle_EqualNode(node, model)
-      arg = {}
-      sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type, sym, model)
-      arg[sym] = val
-
-      if sym_type == :text || sym_type == :string
-        model.where("#{sym} ILIKE ?", val)
-      else
-        model.where(arg)
+    def handle_dot_accessor_node(node, model)
+      # filter on an association
+      associated_model = node.left.value.value
+      # verify association exists
+      if !model.reflect_on_association(associated_model)
+        raise GraphQL::ExecutionError, "Invalid filter: #{associated_model} is not an association"
       end
-    end
-
-    def handle_StrictEqualNode(node, model)
-      arg = {}
-      sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type, sym, model)
-      arg[sym] = val
-      if sym_type == :text || sym_type == :string
-        model.where("#{sym} LIKE ?", val)
-      else
-        model.where(arg)
+      associated_model_class = model.reflect_on_association(associated_model).klass
+      accessor = node.left.accessor
+      field_type = associated_model_class.column_for_attribute(accessor).type
+      if !associated_model_class.column_names.include?(accessor)
+        # verify that the attribute is a valid attribute of associated model
+        raise GraphQL::ExecutionError, "Invalid filter: #{accessor} is not a valid field of #{associated_model}"
       end
+      model = model.left_joins(associated_model.to_sym)
+      field = "#{associated_model.pluralize}.#{accessor}"
+      value = value_from_node(node.value, field_type, accessor.to_sym, model)
+      [model, field, field_type, value]
     end
 
-    def handle_GreaterOrEqualNode(node, model)
-      sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type, sym, model)
-      model.where("#{sym} >= ?", val)
-    end
-
-    def handle_LessOrEqualNode(node, model)
-      sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type, sym, model)
-      model.where("#{sym} <= ?", val)
-    end
-
-    def handle_LessNode(node, model)
-      sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type, sym, model)
-      model.where("#{sym} < ?", val)
-    end
-
-    def handle_GreaterNode(node, model)
-      arg = {}
-      sym, sym_type = sym_from_node(node.left)
-      val = value_from_node(node.value, sym_type, sym, model)
-      model.where("#{sym} > ?", val)
-    end
-
-    def sym_from_node(node)
-      if node.class == RKelly::Nodes::ResolveNode
-        sym_from_resolve_node(node)
-      elsif node.class == RKelly::Nodes::DotAccessorNode
-        sym_from_dot_accessor_node(node)
-      else
-        raise GraphQL::ExecutionError, "Invalid filter: #{node} unknown left value node"
-      end
-    end
-
-    def sym_from_resolve_node(node)
-      field = node.value
-      if !@model.column_names.include?(field)
+    def handle_resolve_node(node, model)
+      field = node.left.value
+      if !model.column_names.include?(field)
         # verify that the attribute is a valid attribute of @model
         raise GraphQL::ExecutionError, "Invalid left value: #{field}"
       end
-      sym = field.to_sym
-      [sym, @model.type_for_attribute(sym).type]
+      #field_sym = field.to_sym
+      field_type = model.column_for_attribute(field.to_sym).type
+      value = value_from_node(node.value, field_type, field.to_sym, model)
+      [model, field, field_type, value]
     end
 
-    def sym_from_dot_accessor_node(node)
-      # This is a comparaison left value node
-      #if accessor.present?
-      #  # The filter is performed on an associated model attribute (accessor)
-      #  associated_model = lvalue.value.to_sym
-      #  # transform associated model name to class name
-      #  associated_model_class = lvalue.value.camelize.constantize
-      #  unless @model.klass.reflect_on_association(associated_model) &&
-      #    associated_model_class.column_names.include?(accessor)
-      #    raise GraphQL::ExecutionError, "Invalid left value: #{lvalue}"
-      #  end
-      #
-      #  # Handle 1 level association performing left join
-      #  @model = @model.left_joins(associated_model)
-      #end
+    def handle_operator_node(node, model)
+      if node.left.class == RKelly::Nodes::DotAccessorNode
+        handle_dot_accessor_node(node, model)
+      elsif node.left.class == RKelly::Nodes::ResolveNode
+        handle_resolve_node(node, model)
+      else
+        raise GraphQL::ExecutionError, "Invalid left value: #{node.left.class}"
+      end
     end
 
     def value_from_node(node, sym_type, sym, model)
@@ -237,6 +191,71 @@ module Graphql
         raise GraphQL::ExecutionError, "Invalid filter: #{node} unknown rvalue node"
       end
     end
+
+    def handle_NotEqualNode(node, model)
+      model, field, type, value = handle_operator_node(node, model)
+
+      if type == :text || type == :string
+        model.where.not("#{field} ILIKE ?", value)
+      else
+        model.where.not("#{field} = ?", value)
+      end
+    end
+
+    def handle_EqualNode(node, model)
+      model, field, type, value = handle_operator_node(node, model)
+
+      if type == :text || type == :string
+        model.where("#{field} ILIKE ?", value)
+      else
+        model.where("#{field} = ?", value)
+      end
+    end
+
+    def handle_StrictEqualNode(node, model)
+      model, field, type, value = handle_operator_node(node, model)
+
+      if type == :text || type == :string
+        model.where("#{field} LIKE ?", value)
+      else
+        model.where("#{field} = ?", value)
+      end
+    end
+
+    def handle_NotStrictEqualNode(node, model)
+      model, field, type, value = handle_operator_node(node, model)
+
+      if type == :text || type == :string
+        model.where.not("#{field} LIKE ?", value)
+      else
+        model.where.not("#{field} = ?", value)
+      end
+    end
+
+    def handle_GreaterOrEqualNode(node, model)
+      model, field, type, value = handle_operator_node(node, model)
+      model.where("#{field} >= ?", value)
+    end
+
+    def handle_LessOrEqualNode(node, model)
+      model, field, type, value = handle_operator_node(node, model)
+      model.where("#{field} <= ?", value)
+    end
+
+    def handle_LessNode(node, model)
+      model, field, type, value = handle_operator_node(node, model)
+      model.where("#{field} < ?", value)
+    end
+
+    def handle_GreaterNode(node, model)
+      model, field, type, value = handle_operator_node(node, model)
+      model.where("#{field} > ?", value)
+    end
+
+
+
+
+
 
     #def handle_left_value(lvalue, accessor)
     #  # This is a comparaison left value node
@@ -311,39 +330,39 @@ module Graphql
     #     RKelly::Nodes::LessNode,
     #     RKelly::Nodes::GreaterNode,
     #   ].include?(node.class)
-    # end
+    ## end
+    ##
+    #def is_enum_field?(field)
+    #  if field.include?(".")
+    #    # The filter is performed on an associated model attribute
+    #    tmp = field.split(".")
+    #    associated_model = tmp.first.to_sym
+    #    attribute = tmp.last.to_sym
+    #    # transform associated model name to class name
+    #    associated_model_class = associated_model.to_s.camelize.constantize
+    #    return associated_model_class.defined_enums.include?(attribute)
+    #  end
+    #  @model.klass.defined_enums.include?(field)
+    #end
     #
-    def is_enum_field?(field)
-      if field.include?(".")
-        # The filter is performed on an associated model attribute
-        tmp = field.split(".")
-        associated_model = tmp.first.to_sym
-        attribute = tmp.last.to_sym
-        # transform associated model name to class name
-        associated_model_class = associated_model.to_s.camelize.constantize
-        return associated_model_class.defined_enums.include?(attribute)
-      end
-      @model.klass.defined_enums.include?(field)
-    end
-
-    def enum_str_to_i(lvalue, rvalue)
-      if lvalue.include?(".")
-        # The filter is performed on an associated model attribute
-        tmp = lvalue.split(".")
-        associated_model = tmp.first.to_sym
-        attribute = tmp.last.to_sym
-        # transform associated model name to class name
-        associated_model_class = associated_model.to_s.camelize.constantize
-        ret = associated_model_class.defined_enums.values.reduce(:merge)[rvalue.delete("'")]
-      else
-        ret = @model.klass.defined_enums.values.reduce(:merge)[rvalue.delete("'")]
-      end
-
-      unless ret.present?
-        raise GraphQL::ExecutionError, "Invalid right value #{rvalue} on enum #{lvalue}"
-      end
-      ret
-    end
+    #def enum_str_to_i(lvalue, rvalue)
+    #  if lvalue.include?(".")
+    #    # The filter is performed on an associated model attribute
+    #    tmp = lvalue.split(".")
+    #    associated_model = tmp.first.to_sym
+    #    attribute = tmp.last.to_sym
+    #    # transform associated model name to class name
+    #    associated_model_class = associated_model.to_s.camelize.constantize
+    #    ret = associated_model_class.defined_enums.values.reduce(:merge)[rvalue.delete("'")]
+    #  else
+    #    ret = @model.klass.defined_enums.values.reduce(:merge)[rvalue.delete("'")]
+    #  end
+    #
+    #  unless ret.present?
+    #    raise GraphQL::ExecutionError, "Invalid right value #{rvalue} on enum #{lvalue}"
+    #  end
+    #  ret
+    #end
 
     def old_transform_filter
       #remove_from_filter=""

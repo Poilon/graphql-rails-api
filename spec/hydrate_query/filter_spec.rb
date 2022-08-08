@@ -51,6 +51,8 @@ describe "Generating some data, performing a graphql query" do
     # test case sensitivity
     expect(house_query("street == 'strEEt42'").count).to eq(1)
     expect(house_query("street === 'strEEt42'").count).to eq(0)
+    expect(house_query("street != 'strEEt42'").count).to eq(9)
+    expect(house_query("street !== 'strEEt42'").count).to eq(10)
   end
 
   it "with a filter on a uuid" do
@@ -94,10 +96,11 @@ describe "Generating some data, performing a graphql query" do
   end
 
   it "with a filter on an association string field" do
-    # expect(house_query("user.email == 'jason@gmail.com'").count).to eq(6)
-    # expect(house_query("user.email == 'jASon@gmail.com'").count).to eq(6)
-    # expect(house_query("user.email === 'jASon@gmail.com'").count).to eq(0)
-    # expect(house_query("user.email != 'boby@gmail.com'").count).to eq(7)
+    expect(house_query("user.email == 'jason@gmail.com'").count).to eq(5)
+    expect(house_query("user.email == 'jASon@gmail.com'").count).to eq(5)
+    expect(house_query("user.email === 'jASon@gmail.com'").count).to eq(0)
+    expect(house_query("user.email != 'boby@gmail.com'").count).to eq(7)
+    expect(house_query("user.email !== 'Boby@gmail.com'").count).to eq(10)
   end
 
   it "with a filter containing a and logical operator" do
