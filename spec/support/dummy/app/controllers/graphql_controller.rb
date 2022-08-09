@@ -8,7 +8,7 @@ class GraphqlController < ApplicationController
       context: { current_user: authenticated_user },
       operation_name: params[:operationName]
     )
-    ApplicationRecord.broadcast_queries
+
     render json: result
   end
 

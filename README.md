@@ -5,12 +5,15 @@
 
 ### Dependencies
 TODO.
+rails
+
 A model User
+
 gem pg
+
 uuid ?
 
 ## Installation
-
 
 Add the gem to your application's Gemfile:
 ```ruby
@@ -23,17 +26,20 @@ $ bundle
 $ rails generate graphql_rails_api:install
 ```
 
+## Get Started
+
 Generate a new active record model with its graphql type and input type.
 ```bash
 $ rails generate graphql_resource city name:string
 ```
+And you're good to go !
 
-And you are good to go !
-Now You can perform mutation to instanciate new resources :
+
+Now You can perform mutation on resources :
 ```bash
 TODO. Perform mutation with curl...
 ```
-And perform query to get resources :
+You can perform queries as well
 ```bash
 TODO. Perform query with curl...
 ```

@@ -3,22 +3,22 @@ require "rails_helper"
 
 NOW = DateTime.now
 
-def run_query(query, filter="")
-  DummySchema.execute(
-    query,
-    variables: { filter: filter },
-    context: { current_user: User.first },
-  )
-end
-
-def house_query(filter)
-  res = run_query("query($filter: String) { houses(filter: $filter) { id } }", filter)
-  puts res["errors"] if res["errors"].present?
-  expect(res["errors"].nil?).to be_truthy
-  res["data"]["houses"]
-end
-
 describe "Generating some data, performing a graphql query" do
+  def run_query(query, filter="")
+    DummySchema.execute(
+      query,
+      variables: { filter: filter },
+      context: { current_user: User.first },
+    )
+  end
+
+  def house_query(filter)
+    res = run_query("query($filter: String) { houses(filter: $filter) { id } }", filter)
+    puts res["errors"] if res["errors"].present?
+    expect(res["errors"].nil?).to be_truthy
+    res["data"]["houses"]
+  end
+
   let!(:berlin) { create(:city, name: "Berlin") }
   let!(:paris) { create(:city, name: "Paris") }
 
