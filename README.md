@@ -52,12 +52,15 @@ curl -X POST http://localhost:3000/graphql \
   -H "content-type: application/json"      \
   -d '{ "query":"mutation($name: String) { create_city(city: { name: $name }) { name } }", "variables": {"name":"Paris"} }'
 
+=> {"data":{"create_city":{"name":"Paris"}}}
 ```
-You can perform queries as well
+You can perform queries as well :
 ```bash
- curl -X POST http://localhost:3000/graphql \
+curl -X POST http://localhost:3000/graphql \
   -H "content-type: application/json"       \
-  -d '{ "query": "{ cities { id } }" }'
+  -d '{ "query": "{ cities { name } }" }'
+
+=> {"data":{"cities":[ {"name":"Paris"} ] } }
 ```
 
 ## Generators
