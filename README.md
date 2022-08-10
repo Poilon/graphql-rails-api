@@ -26,25 +26,7 @@ $ bundle
 $ rails generate graphql_rails_api:install
 ```
 
-## Get Started
-
-Generate a new active record model with its graphql type and input type.
-```bash
-$ rails generate graphql_resource city name:string
-```
-And you're good to go !
-
-
-Now You can perform mutation on resources :
-```bash
-TODO. Perform mutation with curl...
-```
-You can perform queries as well
-```bash
-TODO. Perform query with curl...
-```
-
-### Installation options
+### options
 The following options to the `graphql_rails_api:install` command are available:
 
 To disable PostgreSQL uuid extension, add the option `--no-pg-uuid`
@@ -55,8 +37,30 @@ To disable Apollo compatibility, add the option `--no-apollo-compatibility`
 
 To avoid the addition of a new post '/graphql' route , add the option `--no-generate-graphql-route`
 
+## Get Started
 
-## About resources generation
+Generate a new active record model with its graphql type and input type.
+```bash
+$ rails generate graphql_resource city name:string
+```
+Reboot the rails server and you're good to go !
+
+
+Now You can perform mutation on resources :
+```bash
+curl -X POST http://localhost:3000/graphql \
+  -H "content-type: application/json"      \
+  -d '{ "query":"mutation($name: String) { create_city(city: { name: $name }) { name } }", "variables": {"name":"Paris"} }'
+
+```
+You can perform queries as well
+```bash
+ curl -X POST http://localhost:3000/graphql \
+  -H "content-type: application/json"       \
+  -d '{ "query": "{ cities { id } }" }'
+```
+
+## Generators
 
 ```bash
 $ rails generate graphql_resource computer code:string price:integer power_bench:float belongs_to:user has_many:hard_drives many_to_many:tags
@@ -108,6 +112,9 @@ bulk_update
 TODO.
 describe authenticated_user
 describe visible_for
+
+## Custom resource services
+TODO. explain how to define its own custom service
 
 ## Graphql API example
 

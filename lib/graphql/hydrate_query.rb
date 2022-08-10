@@ -67,11 +67,6 @@ module Graphql
         raise GraphQL::ExecutionError, "Invalid filter: #{@filter}, only one expression allowed"
       end
 
-      ast.each do |node|
-        if node.class == RKelly::Nodes::DotAccessorNode
-        end
-      end
-
       @model = handle_node(exprs.first.value, @model)
     rescue RKelly::SyntaxError => e
       raise GraphQL::ExecutionError, "Invalid filter: #{e.message}"

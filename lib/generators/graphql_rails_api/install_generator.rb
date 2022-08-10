@@ -12,7 +12,7 @@ module GraphqlRailsApi
       folder = 'app/graphql/'
       FileUtils.mkdir_p(folder) unless File.directory?(folder)
 
-      # write_uuid_extensions_migration
+      write_uuid_extensions_migration
 
       write_service
       write_schema
@@ -111,7 +111,7 @@ end
 # end
 
     def write_require_application_rb
-      write_at('config/application.rb', 5, "require 'graphql/hydrate_query'\nrequire 'rkelly'\n")
+      write_at('config/application.rb', 5, "require 'graphql/hydrate_query'\nrequire 'rkelly'\nrequire 'graphql'\n")
     end
 
     def write_uuid_extensions_migration
@@ -123,8 +123,7 @@ end
           class UuidPgExtensions < ActiveRecord::Migration[5.2]
 
             def change
-              execute 'CREATE EXTENSION "pgcrypto" SCHEMA pg_catalog;'
-              execute 'CREATE EXTENSION "uuid-ossp" SCHEMA pg_catalog;'
+              enable_extension 'pgcrypto'
             end
 
           end
@@ -221,7 +220,6 @@ end
                 context: { current_user: authenticated_user },
                 operation_name: params[:operationName]
               )
-              ApplicationRecord.broadcast_queries
               render json: result
             end
 
