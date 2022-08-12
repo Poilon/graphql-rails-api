@@ -1,5 +1,5 @@
 # Graphql Rails Api
-`graphql-rails-api` is a wrapper around [https://graphql-ruby.org/](graphql-ruby) for rails application. It describe easily your graphql API in a domain driven design way.
+`graphql-rails-api` is a wrapper around [graphql-ruby](https://graphql-ruby.org/) for rails application. It describe easily your graphql API in a domain driven design way.
 
 
 The main purposes of this gem are :
