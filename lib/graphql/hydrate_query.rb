@@ -54,11 +54,35 @@ module Graphql
 
     private
 
+    def transform_order
+      return if @order_by.blank?
+
+      sign = @order_by.split(" ").last.downcase == "desc" ? "desc" : "asc"
+      column = @order_by.split(" ").first.strip
+
+      if column.include?(".")
+        associated_model = column.split(".").first
+        accessor = column.split(".").last
+        assoc = get_assoc(@model, associated_model)
+        field_type = get_field_type(assoc.klass, accessor)
+        @model = @model.left_joins(associated_model.to_sym)
+        ordered_field = "#{associated_model.pluralize}.#{accessor}"
+      else
+        field_type = get_field_type(@model, column)
+        ordered_field = "#{model_name.pluralize}.#{column}"
+      end
+
+      if %i[string text].include?(field_type)
+        @model = @model.order(Arel.sql("upper(#{ordered_field}) #{sign}"))
+      else
+        @model = @model.order(Arel.sql("#{ordered_field} #{sign}"))
+      end
+    end
+
     def transform_filter
       return if @filter.blank?
 
       ast = RKelly::Parser.new.parse(@filter)
-
       exprs = ast.value
       if exprs.count != 1
         raise GraphQL::ExecutionError, "Invalid filter: #{@filter}, only one expression allowed"
@@ -115,21 +139,15 @@ module Graphql
     end
 
     def handle_dot_accessor_node(node, model)
-      # filter on an association
       associated_model = node.left.value.value
-      # verify association exists
-      if !model.reflect_on_association(associated_model)
-        raise GraphQL::ExecutionError, "Invalid filter: #{associated_model} is not an association"
-      end
-      assoc = model.reflect_on_association(associated_model)
-      associated_model_class = assoc.klass
-      @need_distinct_results = true if assoc.association_class == ActiveRecord::Associations::HasManyAssociation
       accessor = node.left.accessor
-      field_type = associated_model_class.column_for_attribute(accessor).type
-      if !associated_model_class.column_names.include?(accessor)
-        # verify that the attribute is a valid attribute of associated model
-        raise GraphQL::ExecutionError, "Invalid filter: #{accessor} is not a valid field of #{associated_model}"
+      assoc = get_assoc(model, associated_model)
+      field_type = get_field_type(assoc.klass, accessor)
+
+      if assoc.association_class == ActiveRecord::Associations::HasManyAssociation
+        @need_distinct_results = true
       end
+
       model = model.left_joins(associated_model.to_sym)
       field = "#{associated_model.pluralize}.#{accessor}"
       value = value_from_node(node.value, field_type, accessor.to_sym, model)
@@ -138,11 +156,7 @@ module Graphql
 
     def handle_resolve_node(node, model)
       field = node.left.value
-      if !model.column_names.include?(field)
-        # verify that the attribute is a valid attribute of @model
-        raise GraphQL::ExecutionError, "Invalid left value: #{field}"
-      end
-      field_type = model.column_for_attribute(field.to_sym).type
+      field_type = get_field_type(model, field)
       value = value_from_node(node.value, field_type, field.to_sym, model)
       [model, "#{@model.klass.to_s.downcase.pluralize}.#{field}", field_type, value]
     end
@@ -165,7 +179,7 @@ module Graphql
         elsif sym_type == :date
           Date.parse(val)
         elsif sym_type == :integer
-          # We are about to compare a string with an integer column
+          # Enums are handled here : We are about to compare a string with an integer column
           # If the symbol and the value correspond to an existing enum into the model
           if model.klass.defined_enums[sym.to_s]&.keys&.include?(val)
             # return the corresponding enum value
@@ -265,43 +279,20 @@ module Graphql
       id.to_s.match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
     end
 
-    def transform_order
-      return if @order_by.blank?
-
-      sign = @order_by.split(" ").last.downcase == "desc" ? "desc" : "asc"
-      column = @order_by.split(" ").first.strip
-
-      if column.include?(".")
-        associated_model = column.split(".").first
-        column = column.split(".").last
-        associated_model_class = @model.reflect_on_association(associated_model)&.klass
-
-        unless associated_model_class.present?
-          raise GraphQL::ExecutionError, "Invalid order: #{associated_model} is not an association"
-        end
-
-        unless associated_model_class.column_names.include?(column)
-          raise GraphQL::ExecutionError, "Invalid order: #{column} is not a valid field of #{associated_model}"
-        end
-
-        @model = @model.left_joins(associated_model.to_sym)
-        type = associated_model_class.columns_hash[column].type
-        if %i[string text].include?(type)
-          @model = @model.order(Arel.sql("upper(#{associated_model.pluralize}.#{column}) #{sign}"))
-        else
-          @model = @model.order(Arel.sql("#{associated_model.pluralize}.#{column}) #{sign}"))
-        end
-      else
-        unless @model.column_names.include?(column)
-          raise GraphQL::ExecutionError, "Invalid order: #{column} is not a valid field of #{associated_model}"
-        end
-        type = @model.columns_hash[column].type
-        if %i[string text].include?(type)
-          @model = @model.order("upper(#{model_name}.#{column}) #{sign}")
-        else
-          @model = @model.order("#{model_name}.#{column} #{sign}")
-        end
+    def get_assoc(model, assoc_name)
+      assoc = model.reflect_on_association(assoc_name)
+      unless assoc.present?
+        raise GraphQL::ExecutionError, "Invalid filter: #{assoc_name} is not an association of #{model}"
       end
+      assoc
+    end
+
+    def get_field_type(model, field_name)
+      field = model.column_for_attribute(field_name.to_sym)
+      unless field.present?
+        raise GraphQL::ExecutionError, "Invalid filter: #{field_name} is not a field of #{model}"
+      end
+      field.type
     end
 
     def deep_pluck_to_structs(irep_node)
