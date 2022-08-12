@@ -1,17 +1,17 @@
-# GraphqlRailsApi
+# Graphql Rails Api
+`graphql-rails-api` is a wrapper around (graphql-ruby)[https://graphql-ruby.org/] for rails application. It describe easily your graphql API in a domain driven design way.
 
-`graphql-rails-api` is a wrapper around (graphql-ruby)[https://graphql-ruby.org/] for rails application. It provides a global service for all the graphql resources present in the application. It also comes with handy generators to integrate new resources to the graphql schemas.
+
+The main purposes of this gem are :
+- Provide a normalized code architecture by mapping graphql resources to the active_record model
+- Earn time providing a global graphql service to directly perform crud operations on your models through mutation without having to write code
+- Earn time providing generators to create or update graphql resource files when creating or modifing a model
 
 
-### Dependencies
-TODO.
-rails
-
-A model User
-
-gem pg
-
-uuid ?
+### Notes
+Only postgresql adapter is maintained.
+Only model using uuid as identifier are compatible with generated migrations right now.
+A model User will be created during installation
 
 ## Installation
 
@@ -45,8 +45,7 @@ $ rails generate graphql_resource city name:string
 ```
 Reboot the rails server and you're good to go !
 
-
-Now You can perform mutation on resources :
+Now You can perform crud mutation on resources :
 ```bash
 curl -X POST http://localhost:3000/graphql \
   -H "content-type: application/json"      \
@@ -120,14 +119,6 @@ end
 ```
 
 ## About queries
-TODO.
-2 different query available
-- Individual resource query ... argument id ...
-- Multiple resource query ... page per_page filter order_by
-- Paginated query
-
-config var for max per page result
-
 3 types of queries are available
 show query:
 ```gql
