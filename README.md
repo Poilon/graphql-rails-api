@@ -1,12 +1,10 @@
 # Graphql Rails Api
 `graphql-rails-api` is a wrapper around [graphql-ruby](https://graphql-ruby.org/) for rails application. It describe easily your graphql API in a domain driven design way.
 
-
-The main purposes of this gem are :
-- Provide a normalized code architecture by mapping graphql resources to the active_record model
-- Earn time providing a global graphql service to directly perform crud operations on your models through mutation without having to write code
-- Earn time providing generators to create or update graphql resource files when creating or modifing a model
-
+The main purpose of this gem is to earn time providing :
+- A normalized code architecture by mapping graphql resources to the active record models
+- A global graphql service to directly perform crud operations through mutation
+- A set of generators to create or update graphql resource files when creating or modifing a model
 
 ### Notes
 Only postgresql adapter is maintained.
@@ -26,15 +24,11 @@ $ bundle
 $ rails generate graphql_rails_api:install
 ```
 
-### options
+### Options
 The following options to the `graphql_rails_api:install` command are available:
-
 To disable PostgreSQL uuid extension, add the option `--no-pg-uuid`
-
 To disable ActionCable websocket subscriptions, add the option `--no-action-cable-subs`
-
 To disable Apollo compatibility, add the option `--no-apollo-compatibility`
-
 To avoid the addition of a new post '/graphql' route , add the option `--no-generate-graphql-route`
 
 ## Get Started
@@ -69,39 +63,27 @@ $ rails generate graphql_resource computer code:string price:integer power_bench
 ```
 
 This line will create the data migration, the model and the graphql type of the Computer resource.
-
 It will automatically add `has_many :computers` to the User model
-
 It will add a `computer_id` to the `HardDrive` model, and
 respectively the `has_many :hard_drives` and `belongs_to :computer` to the `Computer` and `HardDrive` models.
-
 The `many_to_many` option will make the `has_many through` association and create the join table between tag and computer.
-
 All of these relations will be propagated to the graphql types.
-
 
 ### Options
 
 To disable migration generation, add the option `--no-migration`
-
 To disable model generation, add the option `--no-model`
-
 To disable mutations generation, add the option `--no-mutations`
-
 To disable service generation, add the option `--no-service`
-
 To disable graphql-type generation, add the option `--no-graphql-type`
-
 To disable graphql-input-type generation, add the option `--no-graphql-input-type`
-
 To disable propagation (has_many creating the id in the other table, many to many creating the join table, and apply to the graphql types), add the option `--no-propagation`
-
 To avoid running migrations after a resource generation, add the option `--no-migrate`
 
 
 ### Note on enum
 The library handle enum with an integer column in the model table. Enum is defined into the active record model.
-Example
+Example :
 ```bash
 $ rails generate graphql_resource house energy_grade:integer belongs_to:user belongs_to:city
 ```
@@ -146,8 +128,8 @@ query($page: String, per_page: String, $filter: String, $order_by: String) {
 }
 ```
 
-### filter argument
-It is a non mandatory string argument used to filter data based on conditions made on active record model fields.
+### Filter query results
+`filter` is a non mandatory string argument used to filter data based on conditions made on active record model fields.
 You can use :
 - parenthesis : `()`
 - Logical operators : `&&` , `||`
@@ -178,8 +160,8 @@ The following filter values can be used :
 "street != 'candlewood lane' && (city.name != 'Berlin' || user.email == 'jason@gmail.com')"
 ```
 
-### order_by argument
-It is a non mandatory string argument used to order the returned data.
+### Order query result argument
+`order_by` is a non mandatory string argument used to order the returned data.
 With the model above the following order_by values can be used :
 ```ruby
 "street DESC"
@@ -187,7 +169,7 @@ With the model above the following order_by values can be used :
 "user.email ASC"
 ```
 ## About mutations
-The graphql controller can handle 5 type of mutation on generated models.
+The graphql-rails-api application service can handle 5 types of mutation on generated models.
 
 create mutation :
 ```gql
@@ -245,6 +227,7 @@ mutation($cities: [CityInputType]!) {
 ```
 
 You can override the default application service for all mutation by defining your own method into the corresponding graphql service :
+
 Example :
 
 app/graphql/cities/service.rb
@@ -262,7 +245,9 @@ end
 ## Custom mutation resource services
 
 To defined your own custom mutation create a file to defined the mutation type and define the correponding methods.
+
 Example :
+
 app/graphql/cities/mutations/custom.rb
 ```ruby
 Cities::Mutations::Custom = GraphQL::Field.define do
