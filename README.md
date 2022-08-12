@@ -62,21 +62,34 @@ curl -X POST http://localhost:3000/graphql \
 $ rails generate graphql_resource computer code:string price:integer power_bench:float belongs_to:user has_many:hard_drives many_to_many:tags
 ```
 
+
 This line will create the data migration, the model and the graphql type of the Computer resource.
+
 It will automatically add `has_many :computers` to the User model
+
 It will add a `computer_id` to the `HardDrive` model, and
+
 respectively the `has_many :hard_drives` and `belongs_to :computer` to the `Computer` and `HardDrive` models.
+
 The `many_to_many` option will make the `has_many through` association and create the join table between tag and computer.
+
 All of these relations will be propagated to the graphql types.
 
 ### Options
 
+
 To disable migration generation, add the option `--no-migration`
+
 To disable model generation, add the option `--no-model`
+
 To disable mutations generation, add the option `--no-mutations`
+
 To disable service generation, add the option `--no-service`
+
 To disable graphql-type generation, add the option `--no-graphql-type`
+
 To disable graphql-input-type generation, add the option `--no-graphql-input-type`
+
 To disable propagation (has_many creating the id in the other table, many to many creating the join table, and apply to the graphql types), add the option `--no-propagation`
 To avoid running migrations after a resource generation, add the option `--no-migrate`
 
