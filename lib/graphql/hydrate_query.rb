@@ -10,17 +10,15 @@ module Graphql
       @model = model
       @check_visibility = check_visibility
 
-      if @id.present? && !valid_id?(@id)
-        raise GraphQL::ExecutionError, "Invalid id: #{@id}"
+      if id.present? && !valid_id?(id)
+        raise GraphQL::ExecutionError, "Invalid id: #{id}"
       end
 
       @id = id
       @user = user
-      @page = page.present? ? page.to_i : 1
-      #@page = page || 1
-      #@per_page = per_page.to_i || 1000
-      # params[:per_page] && params[:per_page] > 1000 ? 1000 : params[:per_page]
-      @per_page = per_page.present? ? per_page.to_i : 1000
+      @page = page&.to_i || 1
+      @per_page = per_page&.to_i || 1000
+      @per_page = 1000 if @per_page > 1000
     end
 
     def run
@@ -31,22 +29,21 @@ module Graphql
         @model = @model.limit(@per_page)
         @model = @model.offset(@per_page * (@page - 1))
 
-        transform_filter if @filter
-        transform_order if @order_by
+        transform_filter if @filter.present?
+        transform_order if @order_by.present?
 
         deep_pluck_to_structs(@context&.irep_node)
       end
     end
 
     def paginated_run
-      transform_filter if @filter
-      transform_order if @order_by
+      transform_filter if @filter.present?
+      transform_order if @order_by.present?
 
       @total = @model.length
       @model = @model.limit(@per_page)
       @model = @model.offset(@per_page * (@page - 1))
 
-      ::Rails.logger.info(@model.to_sql)
       OpenStruct.new(
         data: deep_pluck_to_structs(@context&.irep_node&.typed_children&.values&.first.try(:[], "data")),
         total_count: @total,
@@ -68,6 +65,11 @@ module Graphql
       end
 
       @model = handle_node(exprs.first.value, @model)
+
+      if @need_distinct_results
+        @model = @model.distinct
+      end
+
     rescue RKelly::SyntaxError => e
       raise GraphQL::ExecutionError, "Invalid filter: #{e.message}"
     end
@@ -119,7 +121,9 @@ module Graphql
       if !model.reflect_on_association(associated_model)
         raise GraphQL::ExecutionError, "Invalid filter: #{associated_model} is not an association"
       end
-      associated_model_class = model.reflect_on_association(associated_model).klass
+      assoc = model.reflect_on_association(associated_model)
+      associated_model_class = assoc.klass
+      @need_distinct_results = true if assoc.association_class == ActiveRecord::Associations::HasManyAssociation
       accessor = node.left.accessor
       field_type = associated_model_class.column_for_attribute(accessor).type
       if !associated_model_class.column_names.include?(accessor)

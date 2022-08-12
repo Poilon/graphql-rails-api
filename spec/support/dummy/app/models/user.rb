@@ -1,5 +1,5 @@
 class User < ApplicationRecord
   has_many :houses
-  has_many :accounts
+  has_one :account
 
 end

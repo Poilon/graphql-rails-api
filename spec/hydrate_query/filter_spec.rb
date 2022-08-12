@@ -145,4 +145,33 @@ describe "Generating some data, performing a graphql query" do
     filter = "(user.email != null && id != \"a078dedc-f757-496f-a9a1-2d632f6ed065\" && (((street != 'unknown') && (((street == null)) || street != 'doesntexists'))))"
     expect(house_query(filter).count).to eq(10)
   end
+
+  it "with a filter on has one association" do
+    query = "query($filter: String) { users(filter: $filter) { email } }"
+    filter = "account.id != null"
+
+    res = run_query(query, filter)
+    expect(res["data"]["users"].count).to eq(3)
+
+    filter = "account.id == '68cbde5c-89b2-455d-aa03-a1a6ee7557d1'"
+    res = run_query(query, filter)
+    expect(res["data"]["users"].count).to eq(0)
+  end
+
+  it "with a filter on has many association" do
+    query = "query($filter: String) { cities(filter: $filter) { name } }"
+    filter = "houses.street == 'street42'"
+    res = run_query(query, filter)
+    expect(res["data"]["cities"].count).to eq(1)
+    expect(res["data"]["cities"][0]["name"]).to eq("Paris")
+
+    filter = "houses.street == 'street1'"
+    res = run_query(query, filter)
+    expect(res["data"]["cities"].count).to eq(1)
+    expect(res["data"]["cities"][0]["name"]).to eq("Berlin")
+
+    filter = "houses.street == 'street0'"
+    res = run_query(query, filter)
+    expect(res["data"]["cities"].count).to eq(0)
+  end
 end
