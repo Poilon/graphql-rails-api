@@ -80,6 +80,7 @@ The `many_to_many` option will make the `has_many through` association and creat
 
 All of these relations will be propagated to the graphql types.
 
+
 ### Options
 
 To disable migration generation, add the option `--no-migration`
@@ -98,26 +99,208 @@ To disable propagation (has_many creating the id in the other table, many to man
 
 To avoid running migrations after a resource generation, add the option `--no-migrate`
 
+
+### Note on enum
+The library handle enum with an integer column in the model table. Enum is defined into the active record model.
+Example
+```bash
+$ rails generate graphql_resource house energy_grade:integer belongs_to:user belongs_to:city
+```
+house.rb
+```ruby
+class House < ApplicationRecord
+  belongs_to :city
+  belongs_to :user
+  enum energy_grade: {
+    good: 0,
+    average: 1,
+    bad: 2,
+  }
+end
+```
+
 ## About queries
 TODO.
 2 different query available
 - Individual resource query ... argument id ...
 - Multiple resource query ... page per_page filter order_by
+- Paginated query
 
+config var for max per page result
+
+3 types of queries are available
+show query:
+```gql
+query($id: String!) {
+  city(id: $id) {
+    id
+  }
+}
+```
+index query:
+A max number of 1000 results are return.
+```gql
+query($page: String, per_page: String, $filter: String, $order_by: String) {
+  cities {
+    id
+  }
+}
+```
+index query with pagination : Add the suffix `paginated_` to any index query to use pagination
+```gql
+query($page: String, per_page: String, $filter: String, $order_by: String) {
+  paginated_cities {
+    id
+  }
+}
+```
+
+### filter argument
+It is a non mandatory string argument used to filter data based on conditions made on active record model fields.
+You can use :
+- parenthesis : `()`
+- Logical operators : `&&` , `||`
+- Comparaisons operators : `==`, `!=`, `===`, `!==`, `>`, `<`, `>=`, `<=`
+
+The operators `===` and `!==` are used to perform case sensitive comparaisons on string fields
+Example :
+The folowing model is generated
+```
+rails generate graphql_resource house \
+  street:string        \
+  number:integer       \
+  price:float          \
+  energy_grade:integer \
+  principal:boolean    \
+  belongs_to:user      \
+  belongs_to:city
+```
+The following filter values can be used :
+```ruby
+"street != 'candlewood lane'"
+"street !== 'Candlewood Lane'"
+"number <= 50"
+"price != 50000"
+"build_at <= '#{DateTime.now - 2.years}'"
+"user.email == 'jason@gmail.com'"
+"city.name != 'Berlin'"
+"street != 'candlewood lane' && (city.name != 'Berlin' || user.email == 'jason@gmail.com')"
+```
+
+### order_by argument
+It is a non mandatory string argument used to order the returned data.
+With the model above the following order_by values can be used :
+```ruby
+"street DESC"
+"number ASC"
+"user.email ASC"
+```
 ## About mutations
-create
-update
-destroy
-bulk_create
-bulk_update
+The graphql controller can handle 5 type of mutation on generated models.
+
+create mutation :
+```gql
+mutation($name: String!) {
+  create_city(
+    city: {
+      name: $name
+    }
+  ) {
+    id
+  }
+}
+```
+
+update mutation :
+```gql
+mutation($id: String!, $name: String) {
+  update_city(
+    id: $id
+    city: {
+      name: $name
+    }
+  ) {
+    id
+    name
+  }
+}
+```
+
+destroy mutation :
+```gql
+mutation($id: String!) {
+  destroy_city(id: $id) {
+    id
+  }
+}
+```
+
+bulk_create mutation :
+```gql
+mutation($cities: [CityInputType]!) {
+  bulk_create_city(cities: $cities) {
+    id
+  }
+}
+```
+
+bulk_update :
+```gql
+mutation($cities: [CityInputType]!) {
+  bulk_update_city(cities: $cities) {
+    id
+  }
+}
+```
+
+You can override the default application service for all mutation by defining your own method into the corresponding graphql service :
+Example :
+
+app/graphql/cities/service.rb
+```ruby
+module Cities
+  class Service < ApplicationService
+    def create
+      return graphql_error('Forbidden') if params[:name] == 'Forbidden city'
+
+      super
+    end
+  end
+end
+```
+## Custom mutation resource services
+
+To defined your own custom mutation create a file to defined the mutation type and define the correponding methods.
+Example :
+app/graphql/cities/mutations/custom.rb
+```ruby
+Cities::Mutations::Custom = GraphQL::Field.define do
+  description 'Im a custom mutation'
+  type Cities::Type
+
+  argument :id, !types.String
+  argument :name, !types.String
+
+  resolve ApplicationService.call(:city, :custom)
+end
+```
+
+app/graphql/cities/service.rb
+```ruby
+module Cities
+  class Service < ApplicationService
+    def custom
+      ...
+    end
+  end
+end
+```
 
 ## About user authentication and scope
 TODO.
 describe authenticated_user
 describe visible_for
-
-## Custom resource services
-TODO. explain how to define its own custom service
+describe writable_by
 
 ## Graphql API example
 
