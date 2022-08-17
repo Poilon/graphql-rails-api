@@ -151,14 +151,14 @@ module Graphql
       model = model.left_joins(associated_model.to_sym)
       # field = "#{associated_model.pluralize}.#{accessor}"
       value = value_from_node(node.value, field_type, accessor.to_sym, model)
-      [model, assoc.klass, accessor, field_type, value]
+      [assoc.klass.arel_table[accessor], model, field_type, value]
     end
 
     def handle_resolve_node(node, model)
       field = node.left.value
       field_type = get_field_type!(model, field)
       value = value_from_node(node.value, field_type, field.to_sym, model)
-      [model, model.klass, field, field_type, value]
+      [model.klass.arel_table[field], model, field_type, value]
     end
 
     def handle_operator_node(node, model)
@@ -208,71 +208,71 @@ module Graphql
     end
 
     def handle_NotEqualNode(node, model)
-      model, klass, field, type, value = handle_operator_node(node, model)
+      arel_field, model, type, value = handle_operator_node(node, model)
 
       if value.nil?
-        model.where.not(klass.arel_table[field].eq(nil))
+        model.where.not(arel_field.eq(nil))
       elsif type == :text || type == :string
-        model.where.not(klass.arel_table[field].lower.matches(sanitize_sql_like(value.downcase)))
+        model.where.not(arel_field.lower.matches(sanitize_sql_like(value.downcase)))
       else
-        model.where.not(klass.arel_table[field].eq(value))
+        model.where.not(arel_field.eq(value))
       end
     end
 
     def handle_NotStrictEqualNode(node, model)
-      model, klass, field, type, value = handle_operator_node(node, model)
+      arel_field, model, type, value = handle_operator_node(node, model)
 
       if value.nil?
-        model.where.not(klass.arel_table[field].eq(nil))
+        model.where.not(arel_field.eq(nil))
       elsif type == :text || type == :string
-        model.where.not(klass.arel_table[field].matches(sanitize_sql_like(value), false, true))
+        model.where.not(arel_field.matches(sanitize_sql_like(value), false, true))
       else
-        model.where.not(klass.arel_table[field].eq(value))
+        model.where.not(arel_field.eq(value))
       end
     end
 
     def handle_EqualNode(node, model)
-      model, klass, field, type, value = handle_operator_node(node, model)
+      arel_field, model, type, value = handle_operator_node(node, model)
 
       if value.nil?
-        model.where(klass.arel_table[field].eq(nil))
+        model.where(arel_field.eq(nil))
       elsif type == :text || type == :string
-        model.where(klass.arel_table[field].lower.matches(sanitize_sql_like(value.downcase)))
+        model.where(arel_field.lower.matches(sanitize_sql_like(value.downcase)))
       else
-        model.where(klass.arel_table[field].eq(value))
+        model.where(arel_field.eq(value))
       end
     end
 
     def handle_StrictEqualNode(node, model)
-      model, klass, field, type, value = handle_operator_node(node, model)
+      arel_field, model, type, value = handle_operator_node(node, model)
 
       if value.nil?
-        model.where(klass.arel_table[field].eq(nil))
+        model.where(arel_field.eq(nil))
       elsif type == :text || type == :string
-        model.where(klass.arel_table[field].matches(sanitize_sql_like(value), false, true))
+        model.where(arel_field.matches(sanitize_sql_like(value), false, true))
       else
-        model.where(klass.arel_table[field].eq(value))
+        model.where(arel_field.eq(value))
       end
     end
 
     def handle_GreaterOrEqualNode(node, model)
-      model, klass, field, type, value = handle_operator_node(node, model)
-      model.where(klass.arel_table[field].gteq(value))
+      arel_field, model, type, value = handle_operator_node(node, model)
+      model.where(arel_field.gteq(value))
     end
 
     def handle_LessOrEqualNode(node, model)
-      model, klass, field, type, value = handle_operator_node(node, model)
-      model.where(klass.arel_table[field].lteq(value))
+      arel_field, model, type, value = handle_operator_node(node, model)
+      model.where(arel_field.lteq(value))
     end
 
     def handle_LessNode(node, model)
-      model, klass, field, type, value = handle_operator_node(node, model)
-      model.where(klass.arel_table[field].lt(value))
+      arel_field, model, type, value = handle_operator_node(node, model)
+      model.where(arel_field.lt(value))
     end
 
     def handle_GreaterNode(node, model)
-      model, klass, field, type, value = handle_operator_node(node, model)
-      model.where(klass.arel_table[field].gt(value))
+      arel_field, model, type, value = handle_operator_node(node, model)
+      model.where(arel_field.gt(value))
     end
 
     def valid_id?(id)
