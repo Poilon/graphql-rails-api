@@ -211,17 +211,11 @@ module Graphql
       model, klass, field, type, value = handle_operator_node(node, model)
 
       if value.nil?
-        arg = {}
-        arg[field] = nil
-        model.where.not(arg)
-        #model.where.not(model[field].not_eq(nil))
+        model.where.not(klass.arel_table[field].eq(nil))
       elsif type == :text || type == :string
-        #where(Product.arel_table[:name].matches('Blue Jeans'))
-        # model.where.not("#{field} ILIKE ?", value)
-        # model.where.not(model[field].not_eq(value))
-        model.where.not(klass.arel_table[field].matches(sanitize_sql_like(value)))
+        model.where.not(klass.arel_table[field].lower.matches(sanitize_sql_like(value.downcase)))
       else
-        model.where.not("#{field} = ?", value)
+        model.where.not(klass.arel_table[field].eq(value))
       end
     end
 
@@ -229,11 +223,11 @@ module Graphql
       model, klass, field, type, value = handle_operator_node(node, model)
 
       if value.nil?
-        model.where("#{field} IS NOT NULL")
+        model.where.not(klass.arel_table[field].eq(nil))
       elsif type == :text || type == :string
-        model.where.not("#{field} LIKE ?", value)
+        model.where.not(klass.arel_table[field].matches(sanitize_sql_like(value), false, true))
       else
-        model.where.not("#{field} = ?", value)
+        model.where.not(klass.arel_table[field].eq(value))
       end
     end
 
@@ -241,11 +235,11 @@ module Graphql
       model, klass, field, type, value = handle_operator_node(node, model)
 
       if value.nil?
-        model.where("#{field} IS NULL")
+        model.where(klass.arel_table[field].eq(nil))
       elsif type == :text || type == :string
-        model.where("#{field} ILIKE ?", value)
+        model.where(klass.arel_table[field].lower.matches(sanitize_sql_like(value.downcase)))
       else
-        model.where("#{field} = ?", value)
+        model.where(klass.arel_table[field].eq(value))
       end
     end
 
@@ -253,32 +247,32 @@ module Graphql
       model, klass, field, type, value = handle_operator_node(node, model)
 
       if value.nil?
-        model.where("#{field} IS NULL")
+        model.where(klass.arel_table[field].eq(nil))
       elsif type == :text || type == :string
-        model.where("#{field} LIKE ?", value)
+        model.where(klass.arel_table[field].matches(sanitize_sql_like(value), false, true))
       else
-        model.where("#{field} = ?", value)
+        model.where(klass.arel_table[field].eq(value))
       end
     end
 
     def handle_GreaterOrEqualNode(node, model)
       model, klass, field, type, value = handle_operator_node(node, model)
-      model.where("#{field} >= ?", value)
+      model.where(klass.arel_table[field].gteq(value))
     end
 
     def handle_LessOrEqualNode(node, model)
       model, klass, field, type, value = handle_operator_node(node, model)
-      model.where("#{field} <= ?", value)
+      model.where(klass.arel_table[field].lteq(value))
     end
 
     def handle_LessNode(node, model)
       model, klass, field, type, value = handle_operator_node(node, model)
-      model.where("#{field} < ?", value)
+      model.where(klass.arel_table[field].lt(value))
     end
 
     def handle_GreaterNode(node, model)
       model, klass, field, type, value = handle_operator_node(node, model)
-      model.where("#{field} > ?", value)
+      model.where(klass.arel_table[field].gt(value))
     end
 
     def valid_id?(id)
