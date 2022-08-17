@@ -21,6 +21,7 @@ describe "Generating some data, performing a graphql query" do
 
   let!(:berlin) { create(:city, name: "Berlin") }
   let!(:paris) { create(:city, name: "Paris") }
+  let!(:nil_city) { create(:city, name: nil) }
 
   let!(:jason) { create(:user, email: "jason@gmail.com") }
   let!(:boby) { create(:user, email: "boby@gmail.com") }
@@ -101,6 +102,12 @@ describe "Generating some data, performing a graphql query" do
 
   it "with a filter on a null value" do
     expect(house_query("id != null").count).to eq(10)
+    query = "query($filter: String) { cities(filter: $filter) { id } }"
+    filter = "name == null"
+
+    res = run_query(query, filter)
+    expect(res["data"]["cities"].count).to eq(1)
+    expect(res["data"]["cities"][0]['id']).to eq(nil_city.id)
   end
 
   it "with a filter on an association string field" do

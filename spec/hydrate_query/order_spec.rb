@@ -127,26 +127,6 @@ describe "Generating some data, performing a graphql query" do
     ])
   end
 
-  it "with a order_by on an enum" do
-    # expect(house_query("energy_grade ASC").pluck("energy_grade")).to eq([
-    #   "a",
-    #   "a",
-    #   "b",
-    #   "b",
-    #   "c",
-    #   "d",
-    # ])
-#
-    # expect(house_query("energy_grade DESC").pluck("energy_grade")).to eq([
-    #   "d",
-    #   "c",
-    #   "b",
-    #   "b",
-    #   "a",
-    #   "a",
-    # ])
-  end
-
   it "with a order_by on a bool" do
     expect(house_query("principal ASC").pluck("principal")).to eq([
       false,

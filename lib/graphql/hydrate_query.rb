@@ -63,12 +63,12 @@ module Graphql
       if column.include?(".")
         associated_model = column.split(".").first
         accessor = column.split(".").last
-        assoc = get_assoc(@model, associated_model)
-        field_type = get_field_type(assoc.klass, accessor)
+        assoc = get_assoc!(@model, associated_model)
+        field_type = get_field_type!(assoc.klass, accessor)
         @model = @model.left_joins(associated_model.to_sym)
         ordered_field = "#{associated_model.pluralize}.#{accessor}"
       else
-        field_type = get_field_type(@model, column)
+        field_type = get_field_type!(@model, column)
         ordered_field = "#{model_name.pluralize}.#{column}"
       end
 
@@ -141,24 +141,24 @@ module Graphql
     def handle_dot_accessor_node(node, model)
       associated_model = node.left.value.value
       accessor = node.left.accessor
-      assoc = get_assoc(model, associated_model)
-      field_type = get_field_type(assoc.klass, accessor)
+      assoc = get_assoc!(model, associated_model)
+      field_type = get_field_type!(assoc.klass, accessor)
 
       if assoc.association_class == ActiveRecord::Associations::HasManyAssociation
         @need_distinct_results = true
       end
 
       model = model.left_joins(associated_model.to_sym)
-      field = "#{associated_model.pluralize}.#{accessor}"
+      # field = "#{associated_model.pluralize}.#{accessor}"
       value = value_from_node(node.value, field_type, accessor.to_sym, model)
-      [model, field, field_type, value]
+      [model, assoc.klass, accessor, field_type, value]
     end
 
     def handle_resolve_node(node, model)
       field = node.left.value
-      field_type = get_field_type(model, field)
+      field_type = get_field_type!(model, field)
       value = value_from_node(node.value, field_type, field.to_sym, model)
-      [model, "#{@model.klass.to_s.downcase.pluralize}.#{field}", field_type, value]
+      [model, model.klass, field, field_type, value]
     end
 
     def handle_operator_node(node, model)
@@ -203,20 +203,30 @@ module Graphql
       end
     end
 
+    def sanitize_sql_like(value)
+      ActiveRecord::Base::sanitize_sql_like(value)
+    end
+
     def handle_NotEqualNode(node, model)
-      model, field, type, value = handle_operator_node(node, model)
+      model, klass, field, type, value = handle_operator_node(node, model)
 
       if value.nil?
-        model.where("#{field} IS NOT NULL")
+        arg = {}
+        arg[field] = nil
+        model.where.not(arg)
+        #model.where.not(model[field].not_eq(nil))
       elsif type == :text || type == :string
-        model.where.not("#{field} ILIKE ?", value)
+        #where(Product.arel_table[:name].matches('Blue Jeans'))
+        # model.where.not("#{field} ILIKE ?", value)
+        # model.where.not(model[field].not_eq(value))
+        model.where.not(klass.arel_table[field].matches(sanitize_sql_like(value)))
       else
         model.where.not("#{field} = ?", value)
       end
     end
 
     def handle_NotStrictEqualNode(node, model)
-      model, field, type, value = handle_operator_node(node, model)
+      model, klass, field, type, value = handle_operator_node(node, model)
 
       if value.nil?
         model.where("#{field} IS NOT NULL")
@@ -228,7 +238,7 @@ module Graphql
     end
 
     def handle_EqualNode(node, model)
-      model, field, type, value = handle_operator_node(node, model)
+      model, klass, field, type, value = handle_operator_node(node, model)
 
       if value.nil?
         model.where("#{field} IS NULL")
@@ -240,7 +250,7 @@ module Graphql
     end
 
     def handle_StrictEqualNode(node, model)
-      model, field, type, value = handle_operator_node(node, model)
+      model, klass, field, type, value = handle_operator_node(node, model)
 
       if value.nil?
         model.where("#{field} IS NULL")
@@ -252,22 +262,22 @@ module Graphql
     end
 
     def handle_GreaterOrEqualNode(node, model)
-      model, field, type, value = handle_operator_node(node, model)
+      model, klass, field, type, value = handle_operator_node(node, model)
       model.where("#{field} >= ?", value)
     end
 
     def handle_LessOrEqualNode(node, model)
-      model, field, type, value = handle_operator_node(node, model)
+      model, klass, field, type, value = handle_operator_node(node, model)
       model.where("#{field} <= ?", value)
     end
 
     def handle_LessNode(node, model)
-      model, field, type, value = handle_operator_node(node, model)
+      model, klass, field, type, value = handle_operator_node(node, model)
       model.where("#{field} < ?", value)
     end
 
     def handle_GreaterNode(node, model)
-      model, field, type, value = handle_operator_node(node, model)
+      model, klass, field, type, value = handle_operator_node(node, model)
       model.where("#{field} > ?", value)
     end
 
@@ -279,7 +289,7 @@ module Graphql
       id.to_s.match(/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/)
     end
 
-    def get_assoc(model, assoc_name)
+    def get_assoc!(model, assoc_name)
       assoc = model.reflect_on_association(assoc_name)
       unless assoc.present?
         raise GraphQL::ExecutionError, "Invalid filter: #{assoc_name} is not an association of #{model}"
@@ -287,7 +297,7 @@ module Graphql
       assoc
     end
 
-    def get_field_type(model, field_name)
+    def get_field_type!(model, field_name)
       field = model.column_for_attribute(field_name.to_sym)
       unless field.present?
         raise GraphQL::ExecutionError, "Invalid filter: #{field_name} is not a field of #{model}"
