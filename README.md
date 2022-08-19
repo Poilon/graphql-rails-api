@@ -291,11 +291,29 @@ module Cities
 end
 ```
 
-## About user authentication and scope
-TODO.
-describe authenticated_user
-describe visible_for
-describe writable_by
+## TODO
+
+- Clean error management : catching on raise ... no unexpected json blabla
+- Query type
+	- remove me type
+	- add paginated_resource types
+- Logging on generators actions
+- Don't create model user if it exists
+- Config variable for max number of result (Per page on query)
+- Handle id type != uuid (generated migration)
+- Filter:
+	- handle association multiple level
+- Order
+	- handle order on multiple field
+	- handle order on association multiple level
+	- case sensitivity on order by string / text
+- Write Spec to test visible_for
+- Write Spec to test filter order and visible for together
+- Write spec to test installation and generators
+- Documentation about user authentication and scope
+  - describe authenticated_user
+  - describe visible_for
+  - describe writable_by
 
 ## Graphql API example
 
