@@ -1,15 +1,15 @@
 # Graphql Rails Api
-`graphql-rails-api` is a wrapper around [graphql-ruby](https://graphql-ruby.org/) for rails application. It describe easily your graphql API in a domain driven design way.
+`graphql-rails-api` is a wrapper around [graphql-ruby](https://graphql-ruby.org/) for rails application. It describes easily your graphql API in a domain driven design way.
 
-The main purpose of this gem is to earn time providing :
+The main purpose of this gem is to earn time providing:
 - A normalized code architecture by mapping graphql resources to the active record models
-- A global graphql service to directly perform crud operations through mutation
-- A set of generators to create or update graphql resource files when creating or modifing a model
+- A global graphql service to directly perform crud mutations
+- A set of generators to create or modify graphql resource and active record model at the same time
 
 ### Notes
 Only postgresql adapter is maintained.
 Only model using uuid as identifier are compatible with generated migrations right now.
-A model User will be created during installation
+A model User will be created during installation.
 
 ## Installation
 
@@ -37,9 +37,9 @@ Generate a new active record model with its graphql type and input type.
 ```bash
 $ rails generate graphql_resource city name:string
 ```
-Reboot the rails server and you're good to go !
+Reboot the rails server, and you're good to go!
 
-Now You can perform crud mutation on resources :
+Now You can perform crud mutation on resources:
 ```bash
 curl -X POST http://localhost:3000/graphql \
   -H "content-type: application/json"      \
@@ -47,7 +47,7 @@ curl -X POST http://localhost:3000/graphql \
 
 => {"data":{"create_city":{"name":"Paris"}}}
 ```
-You can perform queries as well :
+You can perform queries as well:
 ```bash
 curl -X POST http://localhost:3000/graphql \
   -H "content-type: application/json"       \
@@ -90,13 +90,13 @@ To disable graphql-type generation, add the option `--no-graphql-type`
 
 To disable graphql-input-type generation, add the option `--no-graphql-input-type`
 
-To disable propagation (has_many creating the id in the other table, many to many creating the join table, and apply to the graphql types), add the option `--no-propagation`
+To disable propagation (has_many creating the id in the other table, many to many creating the join table and apply to the graphql types), add the option `--no-propagation`
 To avoid running migrations after a resource generation, add the option `--no-migrate`
 
 
 ### Note on enum
 The library handle enum with an integer column in the model table. Enum is defined into the active record model.
-Example :
+Example:
 ```bash
 $ rails generate graphql_resource house energy_grade:integer belongs_to:user belongs_to:city
 ```
@@ -114,7 +114,8 @@ end
 ```
 
 ## About queries
-3 types of queries are available
+3 types of queries are available.
+
 show query:
 ```gql
 query($id: String!) {
@@ -132,7 +133,7 @@ query($page: String, per_page: String, $filter: String, $order_by: String) {
   }
 }
 ```
-index query with pagination : Add the suffix `paginated_` to any index query to use pagination
+index query with pagination: Add the suffix `paginated_` to any index query to use pagination
 ```gql
 query($page: String, per_page: String, $filter: String, $order_by: String) {
   paginated_cities {
@@ -142,15 +143,15 @@ query($page: String, per_page: String, $filter: String, $order_by: String) {
 ```
 
 ### Filter query results
-`filter` is a non mandatory string argument used to filter data based on conditions made on active record model fields.
+`filter` is a not required string argument used to filter data based on conditions made on active record model fields.
 You can use :
 - parenthesis : `()`
 - Logical operators : `&&` , `||`
 - Comparaisons operators : `==`, `!=`, `===`, `!==`, `>`, `<`, `>=`, `<=`
 
 The operators `===` and `!==` are used to perform case sensitive comparaisons on string fields
-Example :
-The folowing model is generated
+Example:
+The following model is generated
 ```
 rails generate graphql_resource house \
   street:string        \
@@ -161,7 +162,7 @@ rails generate graphql_resource house \
   belongs_to:user      \
   belongs_to:city
 ```
-The following filter values can be used :
+The following filter values can be used:
 ```ruby
 "street != 'candlewood lane'"
 "street !== 'Candlewood Lane'"
@@ -175,7 +176,7 @@ The following filter values can be used :
 
 ### Order query result argument
 `order_by` is a non mandatory string argument used to order the returned data.
-With the model above the following order_by values can be used :
+With the model above the following order_by values can be used:
 ```ruby
 "street DESC"
 "number ASC"
@@ -184,7 +185,7 @@ With the model above the following order_by values can be used :
 ## About mutations
 The graphql-rails-api application service can handle 5 types of mutation on generated models.
 
-create mutation :
+create mutation:
 ```gql
 mutation($name: String!) {
   create_city(
@@ -197,7 +198,7 @@ mutation($name: String!) {
 }
 ```
 
-update mutation :
+update mutation:
 ```gql
 mutation($id: String!, $name: String) {
   update_city(
@@ -212,7 +213,7 @@ mutation($id: String!, $name: String) {
 }
 ```
 
-destroy mutation :
+destroy mutation:
 ```gql
 mutation($id: String!) {
   destroy_city(id: $id) {
@@ -221,7 +222,7 @@ mutation($id: String!) {
 }
 ```
 
-bulk_create mutation :
+bulk_create mutation:
 ```gql
 mutation($cities: [CityInputType]!) {
   bulk_create_city(cities: $cities) {
@@ -230,7 +231,7 @@ mutation($cities: [CityInputType]!) {
 }
 ```
 
-bulk_update :
+bulk_update:
 ```gql
 mutation($cities: [CityInputType]!) {
   bulk_update_city(cities: $cities) {
@@ -239,9 +240,9 @@ mutation($cities: [CityInputType]!) {
 }
 ```
 
-You can override the default application service for all mutation by defining your own method into the corresponding graphql service :
+You can override the default application service for all mutation by defining your own method into the corresponding graphql service:
 
-Example :
+Example:
 
 app/graphql/cities/service.rb
 ```ruby
@@ -259,7 +260,7 @@ end
 
 To defined your own custom mutation create a file to defined the mutation type and define the correponding methods.
 
-Example :
+Example:
 
 app/graphql/cities/mutations/custom.rb
 ```ruby
