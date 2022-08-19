@@ -26,9 +26,14 @@ $ rails generate graphql_rails_api:install
 
 ### Options
 The following options to the `graphql_rails_api:install` command are available:
+
+
 To disable PostgreSQL uuid extension, add the option `--no-pg-uuid`
+
 To disable ActionCable websocket subscriptions, add the option `--no-action-cable-subs`
+
 To disable Apollo compatibility, add the option `--no-apollo-compatibility`
+
 To avoid the addition of a new post '/graphql' route , add the option `--no-generate-graphql-route`
 
 ## Get Started
