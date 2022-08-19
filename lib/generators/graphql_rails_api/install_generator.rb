@@ -8,10 +8,10 @@ module GraphqlRailsApi
 
     def generate_files
       @app_name = File.basename(Rails.root.to_s).underscore
-      
+
       folder = 'app/graphql/'
       FileUtils.mkdir_p(folder) unless File.directory?(folder)
-       
+
       write_uuid_extensions_migration
 
       write_service
@@ -22,9 +22,7 @@ module GraphqlRailsApi
 
       write_controller
 
-      write_websocket_models
-      write_websocket_connection
-      write_subscriptions_channel
+      system 'rails g graphql_resource user first_name:string last_name:string email:string'
 
       write_application_record_methods
       write_initializer
@@ -33,12 +31,6 @@ module GraphqlRailsApi
     end
 
     private
-
-    def write_websocket_models
-      system 'rails g graphql_resource user first_name:string last_name:string email:string'
-      system 'rails g graphql_resource websocket_connection belongs_to:user connection_identifier:string'
-      system 'rails g graphql_resource subscribed_query belongs_to:websocket_connection result_hash:string query:string'
-    end
 
     def write_route
       route_file = File.read('config/routes.rb')
@@ -49,8 +41,7 @@ module GraphqlRailsApi
         route_file.gsub(
           "Rails.application.routes.draw do\n",
           "Rails.application.routes.draw do\n" \
-          "  post '/graphql', to: 'graphql#execute'\n" \
-          "  mount ActionCable.server => '/cable'\n"
+          "  post '/graphql', to: 'graphql#execute'\n"
         )
       )
     end
@@ -91,25 +82,13 @@ module GraphqlRailsApi
     all
   end
 
-  def self.broadcast_queries
-    WebsocketConnection.all.each do |wsc|
-      wsc.subscribed_queries.each do |sq|
-        result = #{@app_name.camelize}Schema.execute(sq.query, context: { current_user: wsc.user })
-        hex = Digest::SHA1.hexdigest(result.to_s)
-        next if sq.result_hash == hex
 
-        sq.update_attributes(result_hash: hex)
-        SubscriptionsChannel.broadcast_to(wsc, query: sq.query, result: result.to_s)
-      end
-    end
-  end
-
-        STRING
-      )
-    end
+  STRING
+  )
+end
 
     def write_require_application_rb
-      write_at('config/application.rb', 5, "require 'graphql/hydrate_query'\nrequire 'rkelly'\n")
+      write_at('config/application.rb', 5, "require 'graphql/hydrate_query'\nrequire 'rkelly'\nrequire 'graphql'\n")
     end
 
     def write_uuid_extensions_migration
@@ -121,8 +100,7 @@ module GraphqlRailsApi
           class UuidPgExtensions < ActiveRecord::Migration[5.2]
 
             def change
-              execute 'CREATE EXTENSION "pgcrypto" SCHEMA pg_catalog;'
-              execute 'CREATE EXTENSION "uuid-ossp" SCHEMA pg_catalog;'
+              enable_extension 'pgcrypto'
             end
 
           end
@@ -141,70 +119,6 @@ module GraphqlRailsApi
       )
     end
 
-    def write_websocket_connection
-      File.write(
-        'app/channels/application_cable/connection.rb',
-        <<~'STRING'
-          module ApplicationCable
-            class Connection < ActionCable::Connection::Base
-
-              identified_by :websocket_connection
-
-              def connect
-                # Check authentication, and define current user
-                self.websocket_connection = WebsocketConnection.create(
-                  # user_id: current_user.id
-                )
-              end
-
-            end
-          end
-        STRING
-      )
-    end
-
-    def write_subscriptions_channel
-      File.write(
-        'app/channels/subscriptions_channel.rb',
-        <<~STRING
-          class SubscriptionsChannel < ApplicationCable::Channel
-
-            def subscribed
-              stream_for(websocket_connection)
-              websocket_connection.update_attributes(connection_identifier: connection.connection_identifier)
-              ci = ActionCable.server.connections.map(&:connection_identifier)
-              WebsocketConnection.all.each do |wsc|
-                wsc.destroy unless ci.include?(wsc.connection_identifier)
-              end
-            end
-
-            def subscribe_to_query(data)
-              websocket_connection.subscribed_queries.find_or_create_by(query: data['query'])
-              SubscriptionsChannel.broadcast_to(
-                websocket_connection,
-                query: data['query'],
-                result: #{@app_name.camelize}Schema.execute(data['query'], context: { current_user: websocket_connection.user })
-              )
-            end
-
-            def unsubscribe_to_query(data)
-              websocket_connection.subscribed_queries.find_by(query: data['query'])&.destroy
-            end
-
-            def unsubscribed
-              websocket_connection.destroy
-              ci = ActionCable.server.connections.map(&:connection_identifier)
-              WebsocketConnection.all.each do |wsc|
-                wsc.destroy unless ci.include?(wsc.connection_identifier)
-              end
-            end
-
-          end
-
-        STRING
-      )
-    end
-
     def write_controller
       File.write(
         'app/controllers/graphql_controller.rb',
@@ -219,7 +133,6 @@ module GraphqlRailsApi
                 context: { current_user: authenticated_user },
                 operation_name: params[:operationName]
               )
-              ApplicationRecord.broadcast_queries
               render json: result
             end
 
