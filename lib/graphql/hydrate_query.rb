@@ -40,7 +40,7 @@ module Graphql
       transform_filter if @filter.present?
       transform_order if @order_by.present?
 
-      @total = @model.length
+      @total = @model.count
       @model = @model.limit(@per_page)
       @model = @model.offset(@per_page * (@page - 1))
 
@@ -48,7 +48,7 @@ module Graphql
         data: deep_pluck_to_structs(@context&.irep_node&.typed_children&.values&.first.try(:[], "data")),
         total_count: @total,
         per_page: @per_page,
-        page: @page,
+        page: @page
       )
     end
 
@@ -72,10 +72,10 @@ module Graphql
         ordered_field = "#{model_name.pluralize}.#{column}"
       end
 
-      if %i[string text].include?(field_type)
-        @model = @model.order(Arel.sql("upper(#{ordered_field}) #{sign}"))
+      @model = if %i[string text].include?(field_type)
+        @model.order(Arel.sql("upper(#{ordered_field}) #{sign}"))
       else
-        @model = @model.order(Arel.sql("#{ordered_field} #{sign}"))
+        @model.order(Arel.sql("#{ordered_field} #{sign}"))
       end
     end
 
@@ -93,33 +93,32 @@ module Graphql
       if @need_distinct_results
         @model = @model.distinct
       end
-
     rescue RKelly::SyntaxError => e
       raise GraphQL::ExecutionError, "Invalid filter: #{e.message}"
     end
 
     def handle_node(node, model)
-      if node.class == RKelly::Nodes::ParentheticalNode
+      if node.instance_of?(RKelly::Nodes::ParentheticalNode)
         handle_ParentheticalNode(node, model)
-      elsif node.class == RKelly::Nodes::LogicalAndNode
+      elsif node.instance_of?(RKelly::Nodes::LogicalAndNode)
         handle_LogicalAndNode(node, model)
-      elsif node.class == RKelly::Nodes::LogicalOrNode
+      elsif node.instance_of?(RKelly::Nodes::LogicalOrNode)
         handle_LogicalOrNode(node, model)
-      elsif node.class == RKelly::Nodes::NotEqualNode
+      elsif node.instance_of?(RKelly::Nodes::NotEqualNode)
         handle_NotEqualNode(node, model)
-      elsif node.class == RKelly::Nodes::EqualNode
+      elsif node.instance_of?(RKelly::Nodes::EqualNode)
         handle_EqualNode(node, model)
-      elsif node.class == RKelly::Nodes::StrictEqualNode
+      elsif node.instance_of?(RKelly::Nodes::StrictEqualNode)
         handle_StrictEqualNode(node, model)
-      elsif node.class == RKelly::Nodes::NotStrictEqualNode
+      elsif node.instance_of?(RKelly::Nodes::NotStrictEqualNode)
         handle_NotStrictEqualNode(node, model)
-      elsif node.class == RKelly::Nodes::GreaterOrEqualNode
+      elsif node.instance_of?(RKelly::Nodes::GreaterOrEqualNode)
         handle_GreaterOrEqualNode(node, model)
-      elsif node.class == RKelly::Nodes::LessOrEqualNode
+      elsif node.instance_of?(RKelly::Nodes::LessOrEqualNode)
         handle_LessOrEqualNode(node, model)
-      elsif node.class == RKelly::Nodes::LessNode
+      elsif node.instance_of?(RKelly::Nodes::LessNode)
         handle_LessNode(node, model)
-      elsif node.class == RKelly::Nodes::GreaterNode
+      elsif node.instance_of?(RKelly::Nodes::GreaterNode)
         handle_GreaterNode(node, model)
       else
         raise GraphQL::ExecutionError, "Invalid filter: #{node.class} unknown operator"
@@ -162,9 +161,9 @@ module Graphql
     end
 
     def handle_operator_node(node, model)
-      if node.left.class == RKelly::Nodes::DotAccessorNode
+      if node.left.instance_of?(RKelly::Nodes::DotAccessorNode)
         handle_dot_accessor_node(node, model)
-      elsif node.left.class == RKelly::Nodes::ResolveNode
+      elsif node.left.instance_of?(RKelly::Nodes::ResolveNode)
         handle_resolve_node(node, model)
       else
         raise GraphQL::ExecutionError, "Invalid left value: #{node.left.class}"
@@ -172,7 +171,7 @@ module Graphql
     end
 
     def value_from_node(node, sym_type, sym, model)
-      if node.class == RKelly::Nodes::StringNode
+      if node.instance_of?(RKelly::Nodes::StringNode)
         val = node.value.gsub(/^'|'$|^"|"$/, "")
         if sym_type == :datetime
           DateTime.parse(val)
@@ -190,13 +189,13 @@ module Graphql
         else
           val
         end
-      elsif node.class == RKelly::Nodes::NumberNode
+      elsif node.instance_of?(RKelly::Nodes::NumberNode)
         node.value
-      elsif node.class == RKelly::Nodes::TrueNode
+      elsif node.instance_of?(RKelly::Nodes::TrueNode)
         true
-      elsif node.class == RKelly::Nodes::FalseNode
+      elsif node.instance_of?(RKelly::Nodes::FalseNode)
         false
-      elsif node.class == RKelly::Nodes::NullNode
+      elsif node.instance_of?(RKelly::Nodes::NullNode)
         nil
       else
         raise GraphQL::ExecutionError, "Invalid filter: #{node} unknown rvalue node"
@@ -204,7 +203,7 @@ module Graphql
     end
 
     def sanitize_sql_like(value)
-      ActiveRecord::Base::sanitize_sql_like(value)
+      ActiveRecord::Base.sanitize_sql_like(value)
     end
 
     def handle_NotEqualNode(node, model)
@@ -335,7 +334,7 @@ module Graphql
         next arr << v if parent_class.new.attributes.key?(v)
 
         klass = evaluate_model(parent_class, k)
-        arr << { k.to_sym => hash_to_array_of_hashes(v, klass) } if klass.present? && v.present?
+        arr << {k.to_sym => hash_to_array_of_hashes(v, klass)} if klass.present? && v.present?
       end
     end
 
@@ -343,7 +342,7 @@ module Graphql
       hash.select { |k, _| k.ends_with?("_ids") }.each do |(k, _)|
         collection_name = k.gsub("_ids", "").pluralize
         if hash[collection_name].blank?
-          hash[collection_name] = { "id" => nil }
+          hash[collection_name] = {"id" => nil}
         else
           hash[collection_name]["id"] = nil
         end
