@@ -24,7 +24,7 @@ module Graphql
     def run
       if @id
         @model = @model.where(id: @id)
-        deep_pluck_to_structs(@context&.irep_node).first
+        deep_pluck_to_structs(irep_node(model_name.singularize)).first
       else
         @model = @model.limit(@per_page)
         @model = @model.offset(@per_page * (@page - 1))
@@ -32,7 +32,7 @@ module Graphql
         transform_filter if @filter.present?
         transform_order if @order_by.present?
 
-        deep_pluck_to_structs(@context&.irep_node)
+        deep_pluck_to_structs(irep_node(model_name.pluralize))
       end
     end
 
@@ -45,7 +45,7 @@ module Graphql
       @model = @model.offset(@per_page * (@page - 1))
 
       OpenStruct.new(
-        data: deep_pluck_to_structs(@context&.irep_node&.typed_children&.values&.first.try(:[], "data")),
+        data: deep_pluck_to_structs(irep_node(model_name.pluralize, paginated: true)),
         total_count: @total,
         per_page: @per_page,
         page: @page
@@ -371,13 +371,29 @@ module Graphql
       parent_class_name.constantize.reflections[child.to_s.underscore]&.klass
     end
 
-    def parse_fields(irep_node)
-      fields = irep_node&.scoped_children&.values&.first
-      fields = fields["edges"].scoped_children.values.first["node"]&.scoped_children&.values&.first if fields&.key?("edges")
+    def irep_node(name, paginated: false)
+      child = @context.query.lookahead.ast_nodes.first.children[@context[:query_index]]
+      result = if paginated
+        child.children.find { |n| n.name == "data" }.children
+      else
+        child.children
+      end
+      @context[:query_index] += 1
+      result
+    end
+
+    def parse_fields(global_fields)
+      return if global_fields.blank?
+
+      fields = global_fields.map do |field|
+        next if field.class != GraphQL::Language::Nodes::Field
+        field
+      end.compact
+
       return if fields.blank?
 
-      fields.each_with_object({}) do |(k, v), h|
-        h[k] = v.scoped_children == {} ? v.definition.name : parse_fields(v)
+      fields.each_with_object({}) do |node, h|
+        h[node.name.underscore] = node.children.blank? ? nil : parse_fields(node.children)
       end
     end
 
@@ -385,4 +401,5 @@ module Graphql
       @model.class.to_s.split("::").first.underscore.pluralize
     end
   end
+
 end

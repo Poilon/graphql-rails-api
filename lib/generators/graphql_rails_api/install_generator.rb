@@ -3,7 +3,6 @@ require 'graphql/rails/api/config'
 module GraphqlRailsApi
   class InstallGenerator < Rails::Generators::Base
 
-    class_option('apollo_compatibility', type: :boolean, default: true)
     class_option('generate_graphql_route', type: :boolean, default: true)
 
     def generate_files
@@ -165,18 +164,18 @@ end
       File.write(
         'app/graphql/mutation_type.rb',
         <<~'STRING'
-          MutationType = GraphQL::ObjectType.define do
-            name 'Mutation'
+          class MutationType < GraphQL::Schema::Object
+            graphql_name "Mutation"
+            description "The mutation root of this schema"
 
             Graphql::Rails::Api::Config.mutation_resources.each do |methd, resources|
               resources.each do |resource|
                 field(
                   "#{methd}_#{resource.singularize}".to_sym,
-                  "#{resource.camelize}::Mutations::#{methd.camelize}".constantize
+                  mutation: "#{resource.camelize}::Mutations::#{methd.camelize}".constantize
                 )
               end
             end
-
           end
         STRING
       )
@@ -186,57 +185,69 @@ end
       File.write(
         'app/graphql/query_type.rb',
         <<~'STRING'
-          QueryType = GraphQL::ObjectType.define do
-            name 'Query'
+          class QueryType < GraphQL::Schema::Object
+            description "The query root of this schema"
 
             Graphql::Rails::Api::Config.query_resources.each do |resource|
-              field resource.singularize do
-                description "Returns a #{resource.classify}"
-                type !"#{resource.camelize}::Type".constantize
-                argument :id, !types.String
-                resolve ApplicationService.call(resource, :show)
+              klass = Class.new(GraphQL::Schema::Object) do
+                graphql_name "Paginated#{resource.classify}"
+
+                field :total_count, Integer, null: false
+                field :page, Integer, null: false
+                field :per_page, Integer, null: false
+                field :data, ["#{resource.pluralize.camelize}::Type".constantize], null: false
               end
 
-              field resource.pluralize do
-                description "Returns a #{resource.classify}"
-                type !types[!"#{resource.camelize}::Type".constantize]
-                argument :page, types.Int
-                argument :per_page, types.Int
-                argument :filter, types.String
-                argument :order_by, types.String
-                resolve ApplicationService.call(resource, :index)
+              resource.pluralize.camelize.constantize.const_set(
+                :PaginatedType,
+                klass
+              )
+
+              field "paginated_#{resource.pluralize}", "#{resource.camelize}::PaginatedType".constantize, null: false do
+                description "Return paginated #{resource.classify}"
+                argument :page, Integer, required: true
+                argument :per_page, Integer, required: true
+                argument :filter, String, required: false
+                argument :order_by, type: String, required: false
               end
 
-            end
+              define_method("paginated_#{resource.pluralize}") do |page:, per_page:, filter: nil, order_by: nil|
+                arguments = {
+                  page: page,
+                  per_page: per_page,
+                  filter: filter,
+                  order_by: order_by
+                }
+                ApplicationService.call(resource, :paginated_index, context, arguments)
+              end
 
-            field :me, Users::Type do
-              description 'Returns the current user'
-              resolve ->(_, _, ctx) { ctx[:current_user] }
-            end
+              field resource.pluralize.to_sym, ["#{resource.camelize}::Type".constantize], null: false do
+                description "All #{resource.pluralize}"
+                argument :page, Integer, required: false
+                argument :per_page, Integer, required: false
+                argument :filter, String, required: false
+                argument :order_by, String, required: false
+              end
 
+              define_method(resource.pluralize) do |page: nil, per_page: nil, filter: nil, order_by: nil|
+                arguments = {page: page, per_page: per_page, filter: filter, order_by: order_by}
+                ApplicationService.call(resource, :index, context, arguments)
+              end
+
+              field resource.singularize.to_sym, "#{resource.camelize}::Type".constantize, null: false do
+                description "A #{resource.singularize}"
+                argument :id, String, required: true
+              end
+
+              define_method(resource.singularize) do |id:|
+                arguments = {id: id}
+                ApplicationService.call(resource, :show, context, arguments)
+              end
+            end
           end
+
         STRING
       )
-    end
-
-    def apollo_compat
-      <<~'STRING'
-        # /!\ do not remove /!\
-        # Apollo Data compat.
-        ClientDirective = GraphQL::Directive.define do
-          name 'client'
-          locations([GraphQL::Directive::FIELD])
-          default_directive true
-        end
-        ConnectionDirective = GraphQL::Directive.define do
-          name 'connection'
-          locations([GraphQL::Directive::FIELD])
-          argument :key, GraphQL::STRING_TYPE
-          argument :filter, GraphQL::STRING_TYPE.to_list_type
-          default_directive true
-        end
-        # end of Apollo Data compat.
-      STRING
     end
 
     def write_schema
@@ -252,18 +263,20 @@ end
       File.write(
         "app/graphql/#{@app_name}_schema.rb",
         <<~STRING
-          #{logger}
-          #{apollo_compat if options.apollo_compatibility?}
-          # Schema definition
-          #{@app_name.camelize}Schema = GraphQL::Schema.define do
-            mutation(MutationType)
-            query(QueryType)
-            #{'directives [ConnectionDirective, ClientDirective]' if options.apollo_compatibility?}
-            type_error lambda { |err, query_ctx|
-              #{error_handler}
-            }
+          class #{@app_name.camelize}Schema < GraphQL::Schema
+            query QueryType
+            mutation MutationType
+            max_depth 15
+
+            def self.type_error(err, query_ctx)
+              type_error_logger = Logger.new("#{Rails.root}/log/graphql_type_errors.log")
+
+              type_error_logger.error(
+                "#{err} for #{query_ctx.query.query_string} with #{query_ctx.query.provided_variables}"
+              )
+            end
           end
-        STRING
+        <<~STRING
       )
     end
 
@@ -317,41 +330,17 @@ end
               return not_allowed if not_allowed_to_create_resource(object)
 
               if object.save
-                object
+                { singular_resource => Graphql::HydrateQuery.new(model.all, @context, user: user, id: object.id).run }
               else
                 graphql_error(object.errors.full_messages.join(', '))
               end
-            end
-
-            def bulk_create
-              result = model.import(params.map { |p| p.select { |param| model.new.respond_to?(param) } })
-              result.each { |e| e.run_callbacks(:save) }
-              hyd = Graphql::HydrateQuery.new(model.where(id: result.ids), @context).run.compact + result.failed_instances.map do |i|
-                graphql_error(i.errors.full_messages)
-              end
-              return hyd.first if hyd.all? { |e| e.is_a?(GraphQL::ExecutionError) }
-
-              hyd
-            end
-
-            def bulk_update
-              visible_ids = model.where(id: params.map { |p| p[:id] }).pluck(:id)
-              return not_allowed if (model.visible_for(user: user).pluck(:id) & visible_ids).size < visible_ids.size
-
-              hash = params.each_with_object({}) { |p, h| h[p.delete(:id)] = p }
-              failed_instances = []
-              result = model.update(hash.keys, hash.values).map { |e| e.errors.blank? ? e : (failed_instances << e && nil) }
-              hyd = Graphql::HydrateQuery.new(model.where(id: result.compact.map(&:id)), @context).run.compact + failed_instances.map do |i|
-                graphql_error(i.errors.full_messages)
-              end
-              hyd.all? { |e| e.is_a?(GraphQL::ExecutionError) } ? hyd.first : hyd
             end
 
             def update
               return not_allowed if write_not_allowed
 
               if object.update_attributes(params)
-                object
+                { singular_resource => Graphql::HydrateQuery.new(model.all, @context, user: user, id: object.id).run }
               else
                 graphql_error(object.errors.full_messages.join(', '))
               end
@@ -362,7 +351,7 @@ end
               return not_allowed if write_not_allowed
 
               if object.destroy
-                object
+                { singular_resource => object.attributes }
               else
                 graphql_error(object.errors.full_messages.join(', '))
               end
