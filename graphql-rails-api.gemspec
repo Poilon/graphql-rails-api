@@ -18,7 +18,7 @@ Gem::Specification.new do |s|
 
   s.add_dependency 'graphql', '~> 2.0.15', '<= 2.0.15'
   s.add_runtime_dependency 'deep_pluck_with_authorization', '~> 1.1.3'
-  s.add_runtime_dependency 'rails', '~> 7.0.0', '>= 6.1.4'
+  s.add_runtime_dependency 'rails'
 
   s.add_runtime_dependency 'rkelly-remix', '~> 0'
 end

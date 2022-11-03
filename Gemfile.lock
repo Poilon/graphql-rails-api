@@ -4,7 +4,7 @@ PATH
     graphql-rails-api (0.9.5)
       deep_pluck_with_authorization (~> 1.1.3)
       graphql (~> 2.0.15, <= 2.0.15)
-      rails (~> 7.0.0, >= 6.1.4)
+      rails
       rkelly-remix (~> 0)
 
 GEM
