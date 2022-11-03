@@ -8,13 +8,13 @@ class GraphqlAddFieldsGenerator < Rails::Generators::NamedBase
   end
 
   TYPES_MAPPING = {
-    'id' => 'types.String',
-    'uuid' => 'types.String',
-    'boolean' => 'types.Boolean',
-    'float' => 'types.Float',
-    'decimal' => 'types.Float',
-    'integer' => 'types.Int',
-    'bigint' => 'types.Int'
+    'id' => 'String',
+    'uuid' => 'String',
+    'boolean' => 'Boolean',
+    'float' => 'Float',
+    'decimal' => 'Float',
+    'integer' => 'Integer',
+    'bigint' => 'Integer'
   }.freeze
 
   def create_graphql_files
@@ -35,30 +35,30 @@ class GraphqlAddFieldsGenerator < Rails::Generators::NamedBase
     add_has_many_to_models(@resource) if options.propagation?
     add_has_many_fields_to_types(@resource) if options.propagation?
 
-    system('bundle exec rails db:migrate') if options.migrate?
+    # system('bundle exec rails db:migrate') if options.migrate?
   end
 
   private
 
   def types_mapping(type)
-    TYPES_MAPPING[type] || 'types.String'
+    TYPES_MAPPING[type] || 'String'
   end
 
   def complete_graphql_input_type
     return if map_types(input_type: true).blank?
 
-    write_at("#{@mutations_directory}/input_type.rb", 4, "  #{map_types(input_type: true)}\n")
+    write_at("#{@mutations_directory}/input_type.rb", 7, "      #{map_types(input_type: true)}\n")
   end
 
   def complete_graphql_type(resource)
     return if map_types(input_type: false).blank?
 
-    write_at("#{graphql_resource_directory(resource)}/type.rb", 4, "  #{map_types(input_type: false)}\n")
+    write_at("#{graphql_resource_directory(resource)}/type.rb", 6, "    #{map_types(input_type: false)}\n")
   end
 
   def parse_args
     @id_db_type = 'uuid'
-    @id_type = 'types.String'
+    @id_type = 'String'
 
     @resource = file_name.singularize
     @has_many = []
@@ -114,13 +114,8 @@ class GraphqlAddFieldsGenerator < Rails::Generators::NamedBase
     end
 
     write_at(
-      file_name, 4,
-      <<-STRING
-  field :#{resource.singularize}_ids, types[#{@id_type}] do
-    resolve CollectionIdsResolver
-  end
-  field :#{resource.pluralize}, types[#{resource.pluralize.camelize}::Type]
-        STRING
+      file_name, 6,
+      "    field :#{resource.pluralize}, [#{resource.pluralize.camelize}::Type], null: true\n"
     )
 
     input_type_file_name = "app/graphql/#{field.pluralize}/mutations/input_type.rb"
@@ -130,10 +125,8 @@ class GraphqlAddFieldsGenerator < Rails::Generators::NamedBase
     end
 
     write_at(
-      input_type_file_name, 4,
-      <<-STRING
-  argument :#{resource.singularize}_ids, types[#{@id_type}]
-      STRING
+      input_type_file_name, 7,
+      "      argument :#{resource.singularize}_ids, [#{@id_type}], required: false\n"
     )
   end
 
@@ -145,11 +138,8 @@ class GraphqlAddFieldsGenerator < Rails::Generators::NamedBase
     end
 
     write_at(
-      file_name, 4,
-      <<-STRING
-  field :#{field.singularize}_id, #{@id_type}
-  field :#{field.singularize}, #{field.pluralize.camelize}::Type
-      STRING
+      file_name, 6,
+      "    field :#{field.singularize}_id, #{@id_type}, null: false\n    field :#{field.singularize}, #{field.pluralize.camelize}::Type, null: false\n"
     )
     input_type_file_name = "app/graphql/#{resource.pluralize}/mutations/input_type.rb"
     if File.read(input_type_file_name).include?("argument :#{field.singularize}_id") ||
@@ -158,10 +148,8 @@ class GraphqlAddFieldsGenerator < Rails::Generators::NamedBase
     end
 
     write_at(
-      input_type_file_name, 4,
-      <<-STRING
-  argument :#{field.singularize}_id, #{@id_type}
-      STRING
+      input_type_file_name, 7,
+      "      argument :#{field.singularize}_id, #{@id_type}, required: false\n"
     )
   end
 
@@ -225,14 +213,14 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
     result = args&.map do |k, v|
       field_name = k
       field_type = types_mapping(v)
-      res = "#{input_type ? 'argument' : 'field'} :#{field_name}, #{field_type}"
+      res = "#{input_type ? 'argument' : 'field'} :#{field_name}, #{field_type}, #{input_type ? "required: false" : "null: true"}"
       if !input_type && field_name.ends_with?('_id') && @belongs_to_fields.key?(field_name)
-        res += "\n  field :#{field_name.gsub('_id', '')}, " \
+        res += "\n    field :#{field_name.gsub('_id', '')}, " \
           "#{field_name.gsub('_id', '').pluralize.camelize}::Type"
       end
       res
-    end&.join("\n  ")
-    input_type ? result.gsub("field :id, #{@id_type}\n", '') : result
+    end&.join("\n    " + ("  " if input_type).to_s)
+    input_type ? result.gsub("field :id, #{@id_type}, null: false\n", '') : result
   end
 
   # Helpers methods
@@ -248,13 +236,13 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
     file = open(file_name)
     line_count = file.readlines.size
     line_nb = 0
-    file.each do |l|
+    IO.readlines(file).each do |l|
       line_nb += 1
       break if l.include?('ApplicationRecord')
     end
     raise 'Your model must inherit from ApplicationRecord to make it work' if line_nb >= line_count
 
-    write_at(file_name, line_nb + 2, "  #{line}\n")
+    write_at(file_name, line_nb + 1, "  #{line}\n")
   end
 
   def generate_has_many_migration(resource, has_many:)

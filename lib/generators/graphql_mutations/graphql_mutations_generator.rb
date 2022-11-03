@@ -1,5 +1,4 @@
 class GraphqlMutationsGenerator < Rails::Generators::NamedBase
-
   def generate
     resource = file_name.underscore.singularize
     dir = "app/graphql/#{resource.pluralize}/mutations"
@@ -7,55 +6,30 @@ class GraphqlMutationsGenerator < Rails::Generators::NamedBase
     generate_create_mutation(dir, resource)
     generate_update_mutation(dir, resource)
     generate_destroy_mutation(dir, resource)
-    generate_bulk_create_mutation(dir, resource)
-    generate_bulk_update_mutation(dir, resource)
   end
 
   private
-
-  def generate_bulk_create_mutation(dir, resource)
-    File.write(
-      "#{dir}/bulk_create.rb",
-      <<~STRING
-        #{resource_class(resource)}::Mutations::BulkCreate = GraphQL::Field.define do
-          description 'creates some #{resource_class(resource).pluralize}'
-          type types[#{resource_class(resource)}::Type]
-
-          argument :#{resource}, !types[#{resource_class(resource)}::Mutations::InputType]
-
-          resolve ApplicationService.call(:#{resource}, :bulk_create)
-        end
-      STRING
-    )
-  end
-
-  def generate_bulk_update_mutation(dir, resource)
-    File.write(
-      "#{dir}/bulk_update.rb",
-      <<~STRING
-        #{resource_class(resource)}::Mutations::BulkUpdate = GraphQL::Field.define do
-          description 'Updates some #{resource_class(resource).pluralize}'
-          type types[#{resource_class(resource)}::Type]
-
-          argument :#{resource}, !types[#{resource_class(resource)}::Mutations::InputType]
-
-          resolve ApplicationService.call(:#{resource}, :bulk_update)
-        end
-      STRING
-    )
-  end
 
   def generate_create_mutation(dir, resource)
     File.write(
       "#{dir}/create.rb",
       <<~STRING
-        #{resource_class(resource)}::Mutations::Create = GraphQL::Field.define do
-          description 'Creates a #{resource_class(resource).singularize}'
-          type #{resource_class(resource)}::Type
+        module #{resource_class(resource)}
+          module Mutations
+            class Create < GraphQL::Schema::Mutation
+              graphql_name "Create#{resource_class(resource)}"
+              description "Create a #{resource_class(resource).singularize}"
 
-          argument :#{resource}, !#{resource_class(resource)}::Mutations::InputType
+              field :errors, [String], null: true
+              field :#{resource}, #{resource_class(resource)}::Type, null: true
 
-          resolve ApplicationService.call(:#{resource}, :create)
+              argument :attributes, #{resource_class(resource)}::Mutations::InputType, required: false
+
+              def resolve(attributes:)
+                ApplicationService.call(:#{resource}, :create, context, attributes)
+              end
+            end
+          end
         end
       STRING
     )
@@ -65,14 +39,23 @@ class GraphqlMutationsGenerator < Rails::Generators::NamedBase
     File.write(
       "#{dir}/update.rb",
       <<~STRING
-        #{resource_class(resource)}::Mutations::Update = GraphQL::Field.define do
-          description 'Updates a #{resource_class(resource).singularize}'
-          type #{resource_class(resource)}::Type
+        module #{resource_class(resource)}
+          module Mutations
+            class Update < GraphQL::Schema::Mutation
+              graphql_name "Update#{resource_class(resource)}"
+              description "Update a #{resource_class(resource).singularize}"
 
-          argument :id, types.String
-          argument :#{resource}, !#{resource_class(resource)}::Mutations::InputType
+              field :errors, [String], null: true
+              field :#{resource}, #{resource_class(resource)}::Type, null: true
 
-          resolve ApplicationService.call(:#{resource}, :update)
+              argument :id, String, required: true
+              argument :attributes, #{resource_class(resource)}::Mutations::InputType, required: false
+
+              def resolve(id:, attributes:)
+                ApplicationService.call(:#{resource}, :update, context, id, attributes)
+              end
+            end
+          end
         end
       STRING
     )
@@ -82,13 +65,22 @@ class GraphqlMutationsGenerator < Rails::Generators::NamedBase
     File.write(
       "#{dir}/destroy.rb",
       <<~STRING
-        #{resource_class(resource)}::Mutations::Destroy = GraphQL::Field.define do
-          description 'Destroys a #{resource_class(resource).singularize}'
-          type #{resource_class(resource)}::Type
+        module #{resource_class(resource)}
+          module Mutations
+            class Destroy < GraphQL::Schema::Mutation
+              graphql_name "Destroy#{resource_class(resource)}"
+              description "Destroy a #{resource_class(resource).singularize}"
 
-          argument :id, !types.String
+              field :errors, [String], null: true
+              field :#{resource}, #{resource_class(resource)}::Type, null: true
 
-          resolve ApplicationService.call(:#{resource}, :destroy)
+              argument :id, String, required: true
+
+              def resolve(id:)
+                ApplicationService.call(:#{resource}, :destroy, context, id)
+              end
+            end
+          end
         end
       STRING
     )
@@ -97,5 +89,4 @@ class GraphqlMutationsGenerator < Rails::Generators::NamedBase
   def resource_class(resource)
     @resource_class ||= resource.pluralize.camelize
   end
-
 end
