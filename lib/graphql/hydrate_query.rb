@@ -58,7 +58,7 @@ module Graphql
       return if @order_by.blank?
 
       sign = @order_by.split(" ").last.downcase == "desc" ? "desc" : "asc"
-      column = @order_by.split(" ").first.strip
+      column = @order_by.split(" ").first.strip.underscore
 
       if column.include?(".")
         associated_model = column.split(".").first
@@ -120,6 +120,8 @@ module Graphql
         handle_LessNode(node, model)
       elsif node.instance_of?(RKelly::Nodes::GreaterNode)
         handle_GreaterNode(node, model)
+      elsif node.instance_of?(RKelly::Nodes::ModulusNode)
+        handle_ModulusNode(node, model)
       else
         raise GraphQL::ExecutionError, "Invalid filter: #{node.class} unknown operator"
       end
@@ -174,9 +176,17 @@ module Graphql
       if node.instance_of?(RKelly::Nodes::StringNode)
         val = node.value.gsub(/^'|'$|^"|"$/, "")
         if sym_type == :datetime
-          DateTime.parse(val)
+          begin
+            DateTime.parse(val)
+          rescue
+            val
+          end
         elsif sym_type == :date
-          Date.parse(val)
+          begin
+            DateTime.parse(val)
+          rescue
+            val
+          end
         elsif sym_type == :integer
           # Enums are handled here : We are about to compare a string with an integer column
           # If the symbol and the value correspond to an existing enum into the model
@@ -208,6 +218,7 @@ module Graphql
 
     def handle_NotEqualNode(node, model)
       arel_field, model, type, value = handle_operator_node(node, model)
+      arel_field.name = arel_field.name.underscore
 
       if value.nil?
         model.where.not(arel_field.eq(nil))
@@ -220,6 +231,7 @@ module Graphql
 
     def handle_NotStrictEqualNode(node, model)
       arel_field, model, type, value = handle_operator_node(node, model)
+      arel_field.name = arel_field.name.underscore
 
       if value.nil?
         model.where.not(arel_field.eq(nil))
@@ -232,6 +244,7 @@ module Graphql
 
     def handle_EqualNode(node, model)
       arel_field, model, type, value = handle_operator_node(node, model)
+      arel_field.name = arel_field.name.underscore
 
       if value.nil?
         model.where(arel_field.eq(nil))
@@ -244,6 +257,7 @@ module Graphql
 
     def handle_StrictEqualNode(node, model)
       arel_field, model, type, value = handle_operator_node(node, model)
+      arel_field.name = arel_field.name.underscore
 
       if value.nil?
         model.where(arel_field.eq(nil))
@@ -256,22 +270,66 @@ module Graphql
 
     def handle_GreaterOrEqualNode(node, model)
       arel_field, model, type, value = handle_operator_node(node, model)
+      arel_field.name = arel_field.name.underscore
+
       model.where(arel_field.gteq(value))
     end
 
     def handle_LessOrEqualNode(node, model)
       arel_field, model, type, value = handle_operator_node(node, model)
+      arel_field.name = arel_field.name.underscore
+
       model.where(arel_field.lteq(value))
     end
 
     def handle_LessNode(node, model)
       arel_field, model, type, value = handle_operator_node(node, model)
+      arel_field.name = arel_field.name.underscore
+
       model.where(arel_field.lt(value))
     end
 
     def handle_GreaterNode(node, model)
       arel_field, model, type, value = handle_operator_node(node, model)
+      arel_field.name = arel_field.name.underscore
+
       model.where(arel_field.gt(value))
+    end
+
+    # Example: "US" should match "US" and "USA" and "AUS"
+    def handle_ModulusNode(node, model)
+      arel_field, model, type, value = handle_operator_node(node, model)
+      arel_field.name = arel_field.name.underscore
+
+      if value.nil?
+        model.where(arel_field.eq(nil))
+      elsif type == :text || type == :string
+        model.where(arel_field.matches("%" + sanitize_sql_like(value) + "%"))
+      elsif type == :datetime
+        if value.instance_of?(DateTime)
+          model.where(arel_field.gteq(value).and(arel_field.lteq(value + 1.day)))
+        else
+          model.where(
+            Arel::Nodes::NamedFunction.new(
+              "CAST",
+              [Arel::Nodes::As.new(arel_field, Arel::Nodes::SqlLiteral.new("text"))]
+            ).matches("%" + sanitize_sql_like(value) + "%")
+          )
+        end
+      elsif type == :uuid
+        model.where(
+          Arel::Nodes::NamedFunction.new(
+            "CAST",
+            [Arel::Nodes::As.new(arel_field, Arel::Nodes::SqlLiteral.new("text"))]
+          ).matches("%" + sanitize_sql_like(value) + "%")
+        )
+      else
+        model.where(arel_field.eq(value))
+      end
+    end
+
+    def uuid_to_string(uuid)
+      uuid.delete("-")
     end
 
     def valid_id?(id)
@@ -291,7 +349,7 @@ module Graphql
     end
 
     def get_field_type!(model, field_name)
-      field = model.column_for_attribute(field_name.to_sym)
+      field = model.column_for_attribute(field_name.underscore.to_sym)
       unless field.present?
         raise GraphQL::ExecutionError, "Invalid filter: #{field_name} is not a field of #{model}"
       end
@@ -401,5 +459,4 @@ module Graphql
       @model.class.to_s.split("::").first.underscore.pluralize
     end
   end
-
 end
