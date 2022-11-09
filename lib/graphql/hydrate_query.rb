@@ -357,12 +357,33 @@ module Graphql
     end
 
     def deep_pluck_to_structs(irep_node)
-      plucked_attr_to_structs(
-        DeepPluck::Model.new(@model.visible_for(user: @user), user: @user).add(
-          ((hash_to_array_of_hashes(parse_fields(irep_node), @model) || []) + [@to_select_to_add]).compact
-        ).load_all,
+      attributes = (hash_to_array_of_hashes(parse_fields(irep_node), @model) || []).compact
+      res = plucked_attr_to_structs(
+        DeepPluck::Model.new(@model.visible_for(user: @user), user: @user).add(attributes).load_all,
         model_name.singularize.camelize.constantize
       )&.compact
+      res.map do |r|
+        fill_nil_in_openstruct(r, attributes)
+      end
+      res
+    end
+
+    def fill_nil_in_openstruct(struct, fields)
+      fields.each do |field|
+        if field.is_a?(Hash)
+          struct[field.keys.first] ||= OpenStruct.new
+          data = struct[field.keys.first]
+          if data.is_a?(Array)
+            data.each do |s|
+              fill_nil_in_openstruct(s, field.values.first)
+            end
+          else
+            fill_nil_in_openstruct(data, field.values.first)
+          end
+        else
+          struct[field] ||= nil
+        end
+      end
     end
 
     def plucked_attr_to_structs(arr, parent_model)
