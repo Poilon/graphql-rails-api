@@ -451,6 +451,10 @@ module Graphql
     end
 
     def irep_node(name, paginated: false)
+      until @context.query.lookahead.ast_nodes.first.children[@context[:query_index]].is_a?(GraphQL::Language::Nodes::Field)
+        @context[:query_index] += 1
+      end
+
       children = @context.query.lookahead.ast_nodes.first.children[@context[:query_index]].children
       result = if paginated
         children.find { |n| n.name == "data" }.children
