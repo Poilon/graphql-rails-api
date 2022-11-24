@@ -451,11 +451,12 @@ module Graphql
     end
 
     def irep_node(name, paginated: false)
-      child = @context.query.lookahead.ast_nodes.first.children[@context[:query_index]]
+      children = @context.query.lookahead.ast_nodes.first.children[@context[:query_index]].children
       result = if paginated
-        child.children.find { |n| n.name == "data" }.children
+        children.find { |n| n.name == "data" }.children
       else
-        child.children
+        prepend = children.find { |n| n.name == model_name.singularize }
+        prepend.present? ? prepend.children : children
       end
       @context[:query_index] += 1
       result
@@ -471,7 +472,7 @@ module Graphql
 
       return if fields.blank?
 
-      fields.each_with_object({}) do |node, h|
+      res = fields.each_with_object({}) do |node, h|
         h[node.name.underscore] = node.children.blank? ? nil : parse_fields(node.children)
       end
     end

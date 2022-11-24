@@ -227,24 +227,6 @@ mutation($id: String!) {
 }
 ```
 
-bulk_create mutation:
-```gql
-mutation($cities: [CityInputType]!) {
-  bulk_create_city(cities: $cities) {
-    id
-  }
-}
-```
-
-bulk_update:
-```gql
-mutation($cities: [CityInputType]!) {
-  bulk_update_city(cities: $cities) {
-    id
-  }
-}
-```
-
 You can override the default application service for all mutation by defining your own method into the corresponding graphql service:
 
 Example:

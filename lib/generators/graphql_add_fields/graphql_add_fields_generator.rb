@@ -1,20 +1,19 @@
 class GraphqlAddFieldsGenerator < Rails::Generators::NamedBase
-
   %i[
     migration model mutations service graphql_input_type
-    graphql_type propagation connection migrate
+    graphql_type propagation migrate
   ].each do |opt|
     class_option(opt, type: :boolean, default: true)
   end
 
   TYPES_MAPPING = {
-    'id' => 'String',
-    'uuid' => 'String',
-    'boolean' => 'Boolean',
-    'float' => 'Float',
-    'decimal' => 'Float',
-    'integer' => 'Integer',
-    'bigint' => 'Integer'
+    "id" => "String",
+    "uuid" => "String",
+    "boolean" => "Boolean",
+    "float" => "Float",
+    "decimal" => "Float",
+    "integer" => "Integer",
+    "bigint" => "Integer"
   }.freeze
 
   def create_graphql_files
@@ -41,7 +40,7 @@ class GraphqlAddFieldsGenerator < Rails::Generators::NamedBase
   private
 
   def types_mapping(type)
-    TYPES_MAPPING[type] || 'String'
+    TYPES_MAPPING[type] || "String"
   end
 
   def complete_graphql_input_type
@@ -57,8 +56,8 @@ class GraphqlAddFieldsGenerator < Rails::Generators::NamedBase
   end
 
   def parse_args
-    @id_db_type = 'uuid'
-    @id_type = 'String'
+    @id_db_type = "uuid"
+    @id_type = "String"
 
     @resource = file_name.singularize
     @has_many = []
@@ -67,23 +66,23 @@ class GraphqlAddFieldsGenerator < Rails::Generators::NamedBase
     @belongs_to_fields = {}
 
     @args = args.each_with_object({}) do |f, hash|
-      next if f.split(':').count != 2
+      next if f.split(":").count != 2
 
-      case f.split(':').first
-      when 'belongs_to' then
-        hash["#{f.split(':').last.singularize}_id"] = @id_db_type
-        @belongs_to_fields["#{f.split(':').last.singularize}_id"] = @id_db_type
-      when 'has_many' then @has_many << f.split(':').last.pluralize
-      when 'many_to_many' then @many_to_many << f.split(':').last.pluralize
+      case f.split(":").first
+      when "belongs_to"
+        hash["#{f.split(":").last.singularize}_id"] = @id_db_type
+        @belongs_to_fields["#{f.split(":").last.singularize}_id"] = @id_db_type
+      when "has_many" then @has_many << f.split(":").last.pluralize
+      when "many_to_many" then @many_to_many << f.split(":").last.pluralize
       else
-        hash[f.split(':').first] = f.split(':').last
+        hash[f.split(":").first] = f.split(":").last
       end
     end
 
     @fields_to_migration = @args.map do |f|
-      "add_column :#{@resource.pluralize}, :#{f.join(', :')}"
+      "add_column :#{@resource.pluralize}, :#{f.join(", :")}"
     end.join("\n    ")
-    @named_fields = @args.keys.join('_')
+    @named_fields = @args.keys.join("_")
   end
 
   def generate_migration(resource, fields)
@@ -159,8 +158,8 @@ class GraphqlAddFieldsGenerator < Rails::Generators::NamedBase
       add_belongs_to_field_to_type(resource, f)
     end
     @belongs_to_fields.each do |f, _|
-      add_has_many_fields_to_type(f.gsub('_id', ''), resource)
-      add_belongs_to_field_to_type(f.gsub('_id', ''), resource)
+      add_has_many_fields_to_type(f.gsub("_id", ""), resource)
+      add_belongs_to_field_to_type(f.gsub("_id", ""), resource)
     end
   end
 
@@ -179,9 +178,9 @@ class GraphqlAddFieldsGenerator < Rails::Generators::NamedBase
     @many_to_many.each do |field|
       generate_create_migration(
         "#{resource}_#{field}",
-        <<-STRING
-t.#{@id_db_type} :#{resource.underscore.singularize}_id
-      t.#{@id_db_type} :#{field.underscore.singularize}_id
+        <<~STRING
+          t.#{@id_db_type} :#{resource.underscore.singularize}_id
+                t.#{@id_db_type} :#{field.underscore.singularize}_id
         STRING
       )
       generate_empty_model("#{resource}_#{field.singularize}")
@@ -203,7 +202,7 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
       add_to_model(field, "belongs_to :#{resource.singularize}")
     end
     @belongs_to_fields.each do |k, _|
-      field = k.gsub('_id', '')
+      field = k.gsub("_id", "")
       add_to_model(field, "has_many :#{resource.pluralize}")
       add_to_model(resource, "belongs_to :#{field.singularize}")
     end
@@ -213,14 +212,14 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
     result = args&.map do |k, v|
       field_name = k
       field_type = types_mapping(v)
-      res = "#{input_type ? 'argument' : 'field'} :#{field_name}, #{field_type}, #{input_type ? "required: false" : "null: true"}"
-      if !input_type && field_name.ends_with?('_id') && @belongs_to_fields.key?(field_name)
-        res += "\n    field :#{field_name.gsub('_id', '')}, " \
-          "#{field_name.gsub('_id', '').pluralize.camelize}::Type"
+      res = "#{input_type ? "argument" : "field"} :#{field_name}, #{field_type}, #{input_type ? "required: false" : "null: true"}"
+      if !input_type && field_name.ends_with?("_id") && @belongs_to_fields.key?(field_name)
+        res += "\n    field :#{field_name.gsub("_id", "")}, " \
+          "#{field_name.gsub("_id", "").pluralize.camelize}::Type"
       end
       res
     end&.join("\n    " + ("  " if input_type).to_s)
-    input_type ? result.gsub("field :id, #{@id_type}, null: false\n", '') : result
+    input_type ? result.gsub("field :id, #{@id_type}, null: false\n", "") : result
   end
 
   # Helpers methods
@@ -238,9 +237,9 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
     line_nb = 0
     IO.readlines(file).each do |l|
       line_nb += 1
-      break if l.include?('ApplicationRecord')
+      break if l.include?("ApplicationRecord")
     end
-    raise 'Your model must inherit from ApplicationRecord to make it work' if line_nb >= line_count
+    raise "Your model must inherit from ApplicationRecord to make it work" if line_nb >= line_count
 
     write_at(file_name, line_nb + 1, "  #{line}\n")
   end
@@ -285,7 +284,7 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
   end
 
   def write_at(file_name, line, data)
-    open(file_name, 'r+') do |f|
+    open(file_name, "r+") do |f|
       while (line -= 1).positive?
         f.readline
       end
@@ -296,5 +295,4 @@ t.#{@id_db_type} :#{resource.underscore.singularize}_id
       f.write(rest)
     end
   end
-
 end
