@@ -57,25 +57,28 @@ module Graphql
     def transform_order
       return if @order_by.blank?
 
-      sign = @order_by.split(" ").last.downcase == "desc" ? "desc" : "asc"
-      column = @order_by.split(" ").first.strip
+      @order_by.split(",").each do |order|
 
-      if column.include?(".")
-        associated_model = column.split(".").first
-        accessor = column.split(".").last
-        assoc = get_assoc!(@model, associated_model)
-        field_type = get_field_type!(assoc.klass, accessor)
-        @model = @model.left_joins(associated_model.to_sym)
-        ordered_field = "#{associated_model.pluralize}.#{accessor}"
-      else
-        field_type = get_field_type!(@model, column)
-        ordered_field = "#{model_name.pluralize}.#{column}"
-      end
+        sign = order.split(" ").last.downcase == "desc" ? "desc" : "asc"
+        column = order.split(" ").first.strip
 
-      @model = if %i[string text].include?(field_type)
-        @model.order(Arel.sql("upper(#{ordered_field}) #{sign}"))
-      else
-        @model.order(Arel.sql("#{ordered_field} #{sign}"))
+        if column.include?(".")
+          associated_model = column.split(".").first
+          accessor = column.split(".").last
+          assoc = get_assoc!(@model, associated_model)
+          field_type = get_field_type!(assoc.klass, accessor)
+          @model = @model.left_joins(associated_model.to_sym)
+          ordered_field = "#{associated_model.pluralize}.#{accessor}"
+        else
+          field_type = get_field_type!(@model, column)
+          ordered_field = "#{model_name.pluralize}.#{column}"
+        end
+
+        @model = if %i[string text].include?(field_type)
+          @model.order(Arel.sql("upper(#{ordered_field}) #{sign}"))
+        else
+          @model.order(Arel.sql("#{ordered_field} #{sign}"))
+        end
       end
     end
 
