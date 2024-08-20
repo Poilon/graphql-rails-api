@@ -73,7 +73,7 @@ module Graphql
       end
 
       @model = if %i[string text].include?(field_type)
-        @model.order(Arel.sql("upper(#{ordered_field}) #{sign}"))
+        @model.order(Arel.sql("#{ordered_field} #{sign}"))
       else
         @model.order(Arel.sql("#{ordered_field} #{sign}"))
       end
@@ -120,6 +120,8 @@ module Graphql
         handle_LessNode(node, model)
       elsif node.instance_of?(RKelly::Nodes::GreaterNode)
         handle_GreaterNode(node, model)
+      elsif node.instance_of?(RKelly::Nodes::ModulusNode)
+        handle_ModulusNode(node, model)
       else
         raise GraphQL::ExecutionError, "Invalid filter: #{node.class} unknown operator"
       end
@@ -135,6 +137,37 @@ module Graphql
 
     def handle_LogicalOrNode(node, model)
       handle_node(node.left, model).or(handle_node(node.value, model))
+    end
+
+    def handle_ModulusNode(node, model)
+      arel_field, model, type, value = handle_operator_node(node, model)
+      arel_field.name = arel_field.name.underscore
+
+      if value.nil?
+        model.where(arel_field.eq(nil))
+      elsif type == :text || type == :string
+        model.where(arel_field.matches("%" + sanitize_sql_like(value) + "%"))
+      elsif type == :datetime
+        if value.instance_of?(DateTime)
+          model.where(arel_field.gteq(value).and(arel_field.lteq(value + 1.day)))
+        else
+          model.where(
+            Arel::Nodes::NamedFunction.new(
+              "CAST",
+              [Arel::Nodes::As.new(arel_field, Arel::Nodes::SqlLiteral.new("text"))]
+            ).matches("%" + sanitize_sql_like(value) + "%")
+          )
+        end
+      elsif type == :uuid
+        model.where(
+          Arel::Nodes::NamedFunction.new(
+            "CAST",
+            [Arel::Nodes::As.new(arel_field, Arel::Nodes::SqlLiteral.new("text"))]
+          ).matches("%" + sanitize_sql_like(value) + "%")
+        )
+      else
+        model.where(arel_field.eq(value))
+      end
     end
 
     def handle_dot_accessor_node(node, model)
